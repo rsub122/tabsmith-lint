@@ -33,6 +33,7 @@ export interface Extraction {
   sensitiveTabReads: SensitiveTabRead[];
   dynamicApiAccess: DynamicApiAccess[];
   hostAccessSignals: HostAccessSignal[];
+  runtimeRequestedPermissions: string[];
 }
 
 const MEMBER = new Set(["MemberExpression", "OptionalMemberExpression"]);
@@ -156,11 +157,29 @@ function isAbsoluteUrlArg(arg: any): boolean {
   return arg?.type === "StringLiteral" && /^https?:\/\//i.test(arg.value);
 }
 
+/** Pull permission-name string literals out of a `{ permissions: [...] }` object
+ *  literal (the argument to chrome.permissions.request/contains/remove). */
+function collectRequestedPerms(arg: any, out: string[]): void {
+  if (arg?.type !== "ObjectExpression") return;
+  for (const prop of arg.properties ?? []) {
+    const key = prop.key;
+    const keyName = key?.type === "Identifier" ? key.name : key?.type === "StringLiteral" ? key.value : undefined;
+    if (keyName === "permissions" && prop.value?.type === "ArrayExpression") {
+      for (const el of prop.value.elements) {
+        if (el?.type === "StringLiteral") out.push(el.value);
+      }
+    }
+  }
+}
+
+const PERMISSION_REQUEST_METHODS = new Set(["request", "contains", "remove"]);
+
 export function extractFromScripts(scripts: ScriptFile[]): Extraction {
   const apiCalls: ApiCall[] = [];
   const sensitiveTabReads: SensitiveTabRead[] = [];
   const dynamicApiAccess: DynamicApiAccess[] = [];
   const hostAccessSignals: HostAccessSignal[] = [];
+  const runtimeRequestedPermissions: string[] = [];
 
   for (const script of scripts) {
     if (!script.ast || script.parseError) continue;
@@ -203,8 +222,15 @@ export function extractFromScripts(scripts: ScriptFile[]): Extraction {
       if (node.type === "NewExpression" && node.callee?.type === "Identifier" && node.callee.name === "XMLHttpRequest") {
         hostAccessSignals.push({ kind: "xhr", file, line: node.loc?.start.line });
       }
+      // Runtime permission requests: chrome.permissions.request/contains({ permissions: [...] })
+      if (node.type === "CallExpression" && node.callee && MEMBER.has(node.callee.type)) {
+        const r = resolveChain(node.callee, aliases);
+        if (r && !r.dynamic && r.path[0] === "permissions" && r.path.some((p) => PERMISSION_REQUEST_METHODS.has(p))) {
+          collectRequestedPerms(node.arguments?.[0], runtimeRequestedPermissions);
+        }
+      }
     });
   }
 
-  return { apiCalls, sensitiveTabReads, dynamicApiAccess, hostAccessSignals };
+  return { apiCalls, sensitiveTabReads, dynamicApiAccess, hostAccessSignals, runtimeRequestedPermissions };
 }

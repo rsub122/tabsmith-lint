@@ -117,6 +117,24 @@ describe("real-world false positives (caught on Google sample extensions)", () =
     expect(ruleIds(r)).not.toContain("PERM001"); // changeInfo.url requires the tabs permission
   });
 
+  it("optional permission requested at runtime (chrome.permissions.request) is NOT flagged unused", () => {
+    // The 'CleanSlate' case: cookies is optional, requested on a gesture, and the
+    // actual chrome.cookies.* call lives in a lazily-loaded module the scanner can't see.
+    const r = analyzeExt({
+      "manifest.json": {
+        manifest_version: 3,
+        name: "t",
+        version: "1.0.0",
+        optional_permissions: ["cookies"],
+        action: { default_popup: "popup.html" },
+      },
+      "popup.html": '<script src="popup.js"></script>',
+      "popup.js":
+        "document.body.addEventListener('click', () => { chrome.permissions.request({ permissions: ['cookies'] }, (granted) => { if (granted) loadCookieModule(); }); });",
+    });
+    expect(ruleIds(r)).not.toContain("PERM001"); // requesting it at runtime proves intent to use it
+  });
+
   it("tab.url read mid-chain (tab.url.startsWith) counts as using `tabs` (no PERM001)", () => {
     const r = analyzeExt({
       "manifest.json": { manifest_version: 3, name: "t", version: "1.0.0", permissions: ["tabs"], background: { service_worker: "bg.js" } },

@@ -51,11 +51,16 @@ function perm001(model: ExtensionModel): Finding[] {
   const declared = declaredPermissions(manifest);
   const broad = hasBroadHost(manifest);
   const dynamicConfidence: Confidence = dynamicApiAccess.length > 0 ? "low" : "high";
+  // Permissions asked for at runtime via chrome.permissions.request/contains are
+  // used by definition — common for optional_permissions gated behind a user
+  // gesture, where the namespace call may be dynamic or in a lazily-loaded module.
+  const runtimeRequested = new Set(model.runtimeRequestedPermissions);
   const findings: Finding[] = [];
 
   for (const perm of declared) {
     const mapping = chromePermissionMap[perm];
     if (!mapping) continue; // unknown permission → no claim (avoid false positives)
+    if (runtimeRequested.has(perm)) continue; // requested at runtime → used
 
     if (mapping.namespace) {
       const used = apiCalls.some((c) => c.namespace === mapping.namespace) || isUsedViaManifest(perm, manifest);

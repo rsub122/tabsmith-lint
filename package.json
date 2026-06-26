@@ -1,6 +1,6 @@
 {
   "name": "tabsmith-lint",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pre-submission compliance linter for Manifest V3 Chrome extensions: flags likely Chrome Web Store rejection risks (unused/excessive permissions, MV3 violations, broken packaging) before you submit.",
   "type": "module",
   "bin": {

@@ -48,6 +48,7 @@ export function analyze(rootDir: string, options: AnalyzeOptions): LintReport {
     dynamicApiAccess: extraction.dynamicApiAccess,
     hostAccessSignals,
     manifestRefs: manifestRefs.all,
+    runtimeRequestedPermissions: extraction.runtimeRequestedPermissions,
   };
 
   const ruleFindings = runRules(model);

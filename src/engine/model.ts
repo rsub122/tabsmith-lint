@@ -87,6 +87,8 @@ export interface ExtensionModel {
   dynamicApiAccess: DynamicApiAccess[];
   hostAccessSignals: HostAccessSignal[];
   manifestRefs: ManifestFileRef[];
+  /** Permission names passed to chrome.permissions.request/contains at runtime. */
+  runtimeRequestedPermissions: string[];
 }
 
 export interface Finding {
