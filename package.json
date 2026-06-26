@@ -1,0 +1,61 @@
+{
+  "name": "tabsmith-lint",
+  "version": "0.1.0",
+  "description": "Pre-submission compliance linter for Manifest V3 Chrome extensions: flags likely Chrome Web Store rejection risks (unused/excessive permissions, MV3 violations, broken packaging) before you submit.",
+  "type": "module",
+  "bin": {
+    "tabsmith-lint": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "chrome-extension",
+    "manifest-v3",
+    "mv3",
+    "linter",
+    "chrome-web-store",
+    "chrome-web-store-rejection",
+    "purple-potassium",
+    "permissions",
+    "unused-permissions",
+    "extension-publishing",
+    "static-analysis",
+    "cli"
+  ],
+  "homepage": "https://github.com/rsub122/tabsmith-lint#readme",
+  "bugs": {
+    "url": "https://github.com/rsub122/tabsmith-lint/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rsub122/tabsmith-lint.git"
+  },
+  "author": "rsub122",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "validate": "node scripts/validate-corpus.mjs",
+    "validate:releases": "node scripts/validate-corpus.mjs --releases",
+    "score": "node scripts/score-accuracy.mjs",
+    "score:releases": "node scripts/score-accuracy.mjs corpus/labels-releases.json",
+    "demo": "node scripts/demo.mjs",
+    "lint:self": "node dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@babel/parser": "^7.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.6"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "_note": "Real published OSS extensions, built/minified, fetched from pinned GitHub release assets by scripts/lib/release-corpus.mjs into .corpus-cache/releases/<name>/. These stress-test the parser and PERM001 far harder than the clean Google samples. Versions are pinned for reproducibility; bump deliberately.",
+  "extensions": [
+    { "name": "darkreader", "mv": 3, "url": "https://github.com/darkreader/darkreader/releases/download/v4.9.128/darkreader-chrome-mv3.zip" },
+    { "name": "sponsorblock", "mv": 3, "url": "https://github.com/ajayyy/SponsorBlock/releases/download/6.1.5/ChromeExtension.zip" },
+    { "name": "stylus", "mv": 3, "url": "https://github.com/openstyles/stylus/releases/download/v2.3.35/stylus-chrome-mv3-2.3.35-87d453d-id.zip" },
+    { "name": "return-youtube-dislike", "mv": 3, "url": "https://github.com/Anarios/return-youtube-dislike/releases/download/v4.0.4/chrome.zip" },
+    { "name": "ublock", "mv": 2, "url": "https://github.com/gorhill/uBlock/releases/download/1.71.0/uBlock0_1.71.0.chromium.zip" },
+    { "name": "fastforward", "mv": 2, "url": "https://github.com/FastForwardTeam/FastForward/releases/download/manifest-v2-release/fastforward-chromium.zip" },
+    { "name": "violentmonkey", "mv": 2, "url": "https://github.com/violentmonkey/violentmonkey/releases/download/v2.41.0/Violentmonkey-webext-v2.41.0.zip" }
+  ]
+}

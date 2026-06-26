@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+coverage/
+.corpus-cache/
+*.log
+.DS_Store
+.env
+.env.*
+*.tsbuildinfo

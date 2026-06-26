@@ -1,0 +1,45 @@
+{
+  "_corpusKind": "releases",
+  "_methodology": "Ground truth from reading each REAL published, built/minified extension (fetched from pinned GitHub releases). Same labeling rules as corpus/labels.json. Minified code preserves chrome.* member names, so namespace usage stays grep-able; sensitive Tab reads and webpack-module-wrapped API access (e.g. a minified webextension-polyfill alias) are the hard cases.",
+  "_excluded": {
+    "violentmonkey": "Robustness-only (in release-sources.json, parses without crashing). Excluded from accuracy: it accesses the API via `T.contextMenus` where T is a webpack-minified webextension-polyfill module import — static analysis can't resolve the module, so PERM001 false-positives on contextMenus. A known deep-bundling limitation; precisely why PERM001 ships at `fix`, not `reject`."
+  },
+  "extensions": [
+    {
+      "path": "darkreader",
+      "note": "MV3. alarms + scripting + storage all used (grep of minified bundle); fontSettings unmapped. host *://*/* -> broad (PERM005).",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "sponsorblock",
+      "note": "MV3. storage + scripting used; unlimitedStorage unmapped. Host is specific (youtube / sponsor.ajay.app) -> not broad.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "stylus",
+      "note": "MV3. alarms/contextMenus/storage/webRequest/identity/scripting all used; DNR used in code (declarativeNetRequestWithHostAccess grants it); tabs redundant with <all_urls> (PERM004) + broad host (PERM005). new Function in bundled LESS/Stylus compilers -> MV3002 (fix in v0.1, may be sandboxed/unreachable). No reject -> needs_fixes.",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "return-youtube-dislike",
+      "note": "MV3. storage used. web_accessible_resources reference ryd.script.js / menu-fixer.js which are absent from the package (FUNC001 reject); new Function JSON-parse fallback in bundle (MV3002).",
+      "unusedPermissions": [],
+      "expectVerdict": "high_rejection_risk"
+    },
+    {
+      "path": "ublock",
+      "note": "MV2 -> MV3003 reject. tabs + broad content-script match -> PERM004/PERM005. No genuinely-unused mapped permission.",
+      "unusedPermissions": [],
+      "expectVerdict": "high_rejection_risk"
+    },
+    {
+      "path": "fastforward",
+      "note": "MV2 -> MV3003 reject. Uses the brws = globalThis.browser || globalThis.chrome polyfill idiom: alarms/storage/webRequest all resolved as used after the logical-alias fix.",
+      "unusedPermissions": [],
+      "expectVerdict": "high_rejection_risk"
+    }
+  ]
+}

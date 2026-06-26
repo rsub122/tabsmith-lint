@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: build + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  validate:
+    name: real-extension validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Robustness: 0 crashes across ~100 real MV3 extensions.
+      - run: npm run validate
+      # Accuracy: PERM001 false-positive rate within the 5% gate.
+      - run: npm run score
+
+  release-validation:
+    name: messy real-extension validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Robustness on real published, built/minified extensions (uBlock, Dark
+      # Reader, Stylus, ...) fetched from pinned GitHub releases. Gate: 0 crashes.
+      - run: npm run validate:releases
+      # Accuracy on the hand-labeled subset of those.
+      - run: npm run score:releases

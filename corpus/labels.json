@@ -1,0 +1,138 @@
+{
+  "_methodology": "Ground truth from reading each extension's code. The label for a permission is 'actually used by the implementation' (PRD 2.6 / 5), NOT 'extension passed review'. unusedPermissions = declared permissions a human confirmed are NOT exercised by code or manifest declaration. Permissions not in v0.1's permission map (favicon, geolocation, userScripts, sidePanel, contentSettings, readingList, ...) are not judged by PERM001 and so never appear here. This is the seed of the PERM001 accuracy gate: < 5% false positives on high-confidence findings is the bar to promote PERM001 from `fix` to `reject`.",
+  "_source": "GoogleChrome/chrome-extensions-samples (Apache-2.0), fetched on demand by scripts/lib/corpus.mjs — not vendored.",
+  "extensions": [
+    {
+      "path": "api-samples/debugger",
+      "note": "chrome.debugger used; reads tab.url -> tabs (sensitive props) used; host google.com is narrow.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "api-samples/cookies/cookie-clearer",
+      "note": "chrome.cookies used. host <all_urls> -> broad host (PERM005).",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "api-samples/tabCapture",
+      "note": "chrome.tabCapture used; subscribes to tabs.onUpdated but only reads info.status (NOT a sensitive prop), so `tabs` is genuinely over-declared.",
+      "unusedPermissions": ["tabs"],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "api-samples/contentSettings",
+      "note": "chrome.contentSettings used (unmapped). activeTab used behind the action gesture.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "api-samples/history/historyOverride",
+      "note": "chrome.history used. favicon is unmapped.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "api-samples/omnibox/new-tab-search",
+      "note": "no declared permissions; omnibox is a manifest key, not a permission.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "api-samples/readingList",
+      "note": "readingList is unmapped in v0.1; nothing to judge.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "api-samples/tabs/inspector",
+      "note": "reads tab.url / tab.title -> tabs used.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "api-samples/userScripts",
+      "note": "chrome.storage used; userScripts unmapped; host example.com is narrow.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "functional-samples/tutorial.getting-started",
+      "note": "storage + scripting used; activeTab used behind the action gesture; icons are root-relative (/images/..).",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "functional-samples/cookbook.geolocation-popup",
+      "note": "geolocation is unmapped; geolocation accessed via navigator, not chrome.*.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "functional-samples/sample.co2meter",
+      "note": "no declared permissions.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "functional-samples/tutorial.focus-mode",
+      "note": "chrome.scripting used; activeTab used behind the action/command gesture.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "functional-samples/cookbook.sidepanel-open",
+      "note": "chrome.contextMenus used; sidePanel unmapped.",
+      "unusedPermissions": [],
+      "expectVerdict": "pass"
+    },
+    {
+      "path": "functional-samples/sample.catifier",
+      "note": "declarativeNetRequest used DECLARATIVELY via manifest rule_resources (no JS). host <all_urls> -> PERM005.",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "functional-samples/tutorial.mole-game/mole",
+      "note": "uses chrome.tabs.query but reads no sensitive props; chrome.management never called -> both over-declared.",
+      "unusedPermissions": ["management", "tabs"],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "api-samples/declarativeNetRequest/no-cookies",
+      "note": "chrome.declarativeNetRequest used in JS. host <all_urls> -> PERM005. (declarativeNetRequestFeedback is unmapped.)",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "functional-samples/sample.dnr-rule-manager",
+      "note": "chrome.declarativeNetRequest used. host <all_urls> -> PERM005.",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "functional-samples/ai.gemini-on-device-audio-scribe",
+      "note": "content scripts match <all_urls> -> broad host access (PERM005). sidePanel unmapped.",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "functional-samples/ai.gemini-on-device-summarization",
+      "note": "tabs used (reads tab.url) but redundant with broad http(s)://*/* host (PERM004); broad host (PERM005). scripting/storage used.",
+      "unusedPermissions": [],
+      "expectVerdict": "needs_fixes"
+    },
+    {
+      "path": "functional-samples/libraries-xhr-in-sw",
+      "note": "references dist/background.js which is not built (FUNC001 reject); activeTab redundant with <all_urls> (PERM003); broad host (PERM005).",
+      "unusedPermissions": [],
+      "expectVerdict": "high_rejection_risk"
+    },
+    {
+      "path": "functional-samples/cookbook.permissions-addhostaccessrequest",
+      "note": "reads changes.url inside chrome.tabs.onUpdated -> tabs used. chrome.scripting is declared but never called -> genuinely over-declared.",
+      "unusedPermissions": ["scripting"],
+      "expectVerdict": "needs_fixes"
+    }
+  ]
+}

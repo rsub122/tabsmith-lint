@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Pass Basic",
+  "version": "1.0.0",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html" }
+}
