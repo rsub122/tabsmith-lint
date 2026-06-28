@@ -66,20 +66,20 @@ function perm001(model: ExtensionModel): Finding[] {
       const used = apiCalls.some((c) => c.namespace === mapping.namespace) || isUsedViaManifest(perm, manifest);
       if (!used) {
         findings.push(unusedFinding(model, perm, dynamicConfidence,
-          `No chrome.${mapping.namespace}/browser.${mapping.namespace} usage found.`));
+          `No chrome.${mapping.namespace} usage found. It would count as used if your code calls chrome.${mapping.namespace}.* (directly, via an alias or destructure, or after a chrome.permissions.request).`));
       }
     } else if (mapping.special === "sensitiveTabProperties") {
       // `tabs` is "used" only via sensitive Tab property reads. When broad host
       // is present, redundancy is owned by PERM004 — don't double-flag here.
       if (!broad && model.sensitiveTabReads.length === 0) {
         findings.push(unusedFinding(model, perm, dynamicConfidence,
-          `The "tabs" permission only grants sensitive Tab properties (url, title, ...); no such reads were found.`));
+          `The "tabs" permission only grants sensitive Tab properties (url, pendingUrl, title, favIconUrl), and none are read. It would count as used if your code reads one of those, e.g. tab.url, including off a chrome.tabs.onUpdated changeInfo.`));
       }
     } else if (mapping.special === "temporaryHostAccess") {
       // `activeTab` is plausibly used only behind a user-gesture entry point.
       if (!hasGestureEntryPoint(manifest, declared)) {
         findings.push(unusedFinding(model, perm, "medium",
-          `"activeTab" has no user-gesture entry point (action/commands/contextMenus) to trigger it.`));
+          `"activeTab" has no user-gesture entry point to trigger it. It would count as used if the manifest exposes an action, command, or context menu.`));
       }
     }
   }
