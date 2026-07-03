@@ -1,12 +1,14 @@
 # tabsmith-lint
 
-[![npm version](https://img.shields.io/npm/v/tabsmith-lint?logo=npm&color=cb3837)](https://www.npmjs.com/package/tabsmith-lint)
-[![npm downloads](https://img.shields.io/npm/dt/tabsmith-lint?logo=npm&color=cb3837)](https://www.npmjs.com/package/tabsmith-lint)
-[![CI](https://img.shields.io/github/actions/workflow/status/rsub122/tabsmith-lint/ci.yml?branch=main&logo=github&label=CI)](https://github.com/rsub122/tabsmith-lint/actions/workflows/ci.yml)
-[![node](https://img.shields.io/node/v/tabsmith-lint?logo=node.js)](https://github.com/rsub122/tabsmith-lint/blob/main/package.json)
-[![license](https://img.shields.io/npm/l/tabsmith-lint?color=blue)](LICENSE)
-[![install size](https://packagephobia.com/badge?p=tabsmith-lint)](https://packagephobia.com/result?p=tabsmith-lint)
-[![GitHub stars](https://img.shields.io/github/stars/rsub122/tabsmith-lint?style=flat&logo=github)](https://github.com/rsub122/tabsmith-lint/stargazers)
+<p>
+<a href="https://www.npmjs.com/package/tabsmith-lint"><img alt="npm version" height="28" src="https://img.shields.io/npm/v/tabsmith-lint?logo=npm&color=cb3837"></a>
+<a href="https://www.npmjs.com/package/tabsmith-lint"><img alt="npm downloads" height="28" src="https://img.shields.io/npm/dt/tabsmith-lint?logo=npm&color=cb3837"></a>
+<a href="https://github.com/rsub122/tabsmith-lint/actions/workflows/ci.yml"><img alt="CI" height="28" src="https://img.shields.io/github/actions/workflow/status/rsub122/tabsmith-lint/ci.yml?branch=main&logo=github&label=CI"></a>
+<a href="https://github.com/rsub122/tabsmith-lint/blob/main/package.json"><img alt="node" height="28" src="https://img.shields.io/node/v/tabsmith-lint?logo=node.js"></a>
+<a href="LICENSE"><img alt="license" height="28" src="https://img.shields.io/npm/l/tabsmith-lint?color=blue"></a>
+<a href="https://packagephobia.com/result?p=tabsmith-lint"><img alt="install size" height="28" src="https://packagephobia.com/badge?p=tabsmith-lint"></a>
+<a href="https://github.com/rsub122/tabsmith-lint/stargazers"><img alt="GitHub stars" height="28" src="https://img.shields.io/github/stars/rsub122/tabsmith-lint?style=flat&logo=github"></a>
+</p>
 
 A pre-submission compliance linter for browser extensions. v0.1 analyzes an unpacked
 Manifest V3 Chrome extension directory and reports likely Chrome Web Store rejection
