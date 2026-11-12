@@ -24,7 +24,7 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
           cache: npm
-      - run: npm install -g npm@latest # trusted publishing/OIDC needs a recent npm
+      - run: npm install -g npm@11 # trusted publishing/OIDC needs npm >= 11.5.1; npm@latest (12+) dropped Node 20
       - run: npm ci
       - run: npm run build
       - run: npm test
