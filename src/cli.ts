@@ -33,7 +33,8 @@ function helpText(): string {
 Point it at an unpacked extension directory and it flags likely Chrome Web Store
 rejection risks before you submit:
   - unused / excessive permissions (the "Purple Potassium" rejection)
-  - Manifest V3 violations: remotely hosted code, string execution, Manifest V2
+  - Manifest V3 violations: remotely hosted code (script tags, import, importScripts),
+    string execution, forbidden extension-page CSP, Manifest V2
   - broken packaging: missing or wrong-case file references
 
 ${USAGE}

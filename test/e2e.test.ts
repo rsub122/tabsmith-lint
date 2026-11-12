@@ -12,6 +12,8 @@ const CASES: Array<[string, string | null, string, number]> = [
   ["active-tab-redundant", "PERM003", "needs_fixes", 1],
   ["broad-hosts", "PERM005", "needs_fixes", 1],
   ["remote-script", "MV3001", "high_rejection_risk", 2],
+  ["remote-importscripts", "MV3001", "high_rejection_risk", 2],
+  ["bad-csp", "MV3004", "high_rejection_risk", 2],
   ["eval", "MV3002", "needs_fixes", 1],
   ["mv2", "MV3003", "high_rejection_risk", 2],
   ["missing-file", "FUNC001", "high_rejection_risk", 2],

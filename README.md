@@ -10,7 +10,7 @@
 <a href="https://github.com/rsub122/tabsmith-lint/stargazers"><img alt="GitHub stars" height="28" src="https://img.shields.io/github/stars/rsub122/tabsmith-lint?style=flat&logo=github"></a>
 </p>
 
-A pre-submission compliance linter for browser extensions. v0.1 analyzes an unpacked
+A pre-submission compliance linter for browser extensions. It analyzes an unpacked
 Manifest V3 Chrome extension directory and reports likely Chrome Web Store rejection
 risks **before** you submit — unused/excessive permissions, missing permissions, MV3
 violations, and broken file references — with a clear verdict and actionable fixes.
@@ -24,7 +24,7 @@ Chrome reviewers flag:
 | Violation ID | What it means | tabsmith rules |
 |---|---|---|
 | Purple Potassium | Excessive / unused permissions | PERM001, PERM003, PERM004, PERM005 |
-| Blue Argon | Remotely hosted code / string execution | MV3001, MV3002 |
+| Blue Argon | Remotely hosted code / string execution / forbidden CSP | MV3001, MV3002, MV3004 |
 | Yellow Magnesium | Functionality / broken packaging | FUNC001, FUNC002 |
 
 ```bash
@@ -82,7 +82,7 @@ exists, leave the severity at `fix`.
 
 ## Status
 
-v0.1. Chrome-only, directory input, 10 rules (PERM001-005, MV3001-003, FUNC001-002).
+Chrome-only, directory input, 12 rules (PERM001-005, MV3001-004, FUNC001-002).
 
 Firefox/Edge, ZIP/CRX input, SARIF, and a GitHub Action are on the roadmap.
 
