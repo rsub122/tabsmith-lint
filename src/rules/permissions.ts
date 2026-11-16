@@ -174,7 +174,7 @@ function perm005(model: ExtensionModel): Finding[] {
     message: `Broad host patterns requested: ${[...new Set(broad)].join(", ")}.`,
     file: "manifest.json",
     line: findLine(model.manifestRaw, broad[0]),
-    fixHint: `Replace broad patterns with the narrowest required host patterns.`,
+    fixHint: `Replace broad patterns with the narrowest required host patterns. If broad access is only needed for some users or features, move it to "optional_host_permissions" and request it at runtime with chrome.permissions.request().`,
   }];
 }
 

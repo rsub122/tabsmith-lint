@@ -26,6 +26,14 @@ describe("U1: CLI arg parsing + exit codes", () => {
     expect(r.exitCode).toBe(3);
   });
 
+  it("--help is current: no stale version claims, lists injected <script> detection", () => {
+    const r = run(["--help"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).not.toMatch(/v0\.1\b/);
+    expect(r.stdout).toMatch(/only chrome is supported/i);
+    expect(r.stdout).toMatch(/injected <script> src/);
+  });
+
   it("--version prints a semver and exits 0", () => {
     const r = run(["--version"]);
     expect(r.exitCode).toBe(0);

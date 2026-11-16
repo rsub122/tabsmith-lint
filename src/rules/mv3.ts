@@ -14,7 +14,8 @@ export const MV3002_SEVERITY: Severity = "fix";
 
 const REMOTE_SCRIPT_RE = /<script[^>]*\bsrc\s*=\s*["']((?:https?:)?\/\/[^"']+)["']/gi;
 
-/** MV3001 — remotely hosted code (HTML remote <script src>, remote import/import()). */
+/** MV3001 — remotely hosted code (HTML remote <script src>, remote import/import(),
+ *  importScripts, and remote src on a JS-created <script> element). */
 function mv3001(model: ExtensionModel): Finding[] {
   const findings: Finding[] = [];
 
@@ -57,7 +58,150 @@ function mv3001(model: ExtensionModel): Finding[] {
         }
       }
     });
+    findings.push(...injectedRemoteScripts(script.relPath, script.ast));
   }
+  return findings;
+}
+
+// --- Injected <script> elements -------------------------------------------
+// `const s = document.createElement("script"); s.src = "https://…"` (or
+// `s.setAttribute("src", "https://…")`, or `Object.assign(s, {src: "https://…"})`)
+// injects remotely hosted code exactly like an HTML <script src>. Precision first:
+//  - only elements created via `document.createElement("script")` (or
+//    `<x>.document` / `<x>.ownerDocument`) count — img/iframe/link/etc. never do;
+//  - a variable is tracked only if EVERY binding of that name in the file is such
+//    a createElement call (no parameter, other initializer or reassignment with
+//    the same name), so reused/minified names are skipped, never guessed;
+//  - only literal http(s):// or protocol-relative URLs are judged (computed URLs,
+//    local paths and chrome.runtime.getURL(...) are left alone);
+//  - fetch/XHR of remote JSON or data is not code execution and is never flagged.
+
+function isScriptCreate(node: any): boolean {
+  if (node?.type !== "CallExpression") return false;
+  const callee = node.callee;
+  if (callee?.type !== "MemberExpression" || callee.computed) return false;
+  if (callee.property?.type !== "Identifier" || callee.property.name !== "createElement") return false;
+  const obj = callee.object;
+  const isDoc =
+    (obj?.type === "Identifier" && obj.name === "document") ||
+    (obj?.type === "MemberExpression" &&
+      !obj.computed &&
+      obj.property?.type === "Identifier" &&
+      (obj.property.name === "document" || obj.property.name === "ownerDocument"));
+  if (!isDoc) return false;
+  const tag = staticString(node.arguments?.[0]);
+  return typeof tag === "string" && tag.toLowerCase() === "script";
+}
+
+/** Identifiers bound by a declaration/parameter pattern. */
+function patternNames(pattern: any, out: string[] = []): string[] {
+  if (!pattern) return out;
+  switch (pattern.type) {
+    case "Identifier": out.push(pattern.name); break;
+    case "ObjectPattern":
+      for (const p of pattern.properties ?? []) patternNames(p.type === "RestElement" ? p.argument : p.value, out);
+      break;
+    case "ArrayPattern": for (const e of pattern.elements ?? []) patternNames(e, out); break;
+    case "AssignmentPattern": patternNames(pattern.left, out); break;
+    case "RestElement": patternNames(pattern.argument, out); break;
+    case "TSParameterProperty": patternNames(pattern.parameter, out); break;
+  }
+  return out;
+}
+
+/** Names bound ONLY to document.createElement("script") anywhere in the file. */
+function scriptElementNames(ast: any): Set<string> {
+  const script = new Set<string>();
+  const other = new Set<string>();
+  walk(ast, (node) => {
+    if (node.type === "VariableDeclarator") {
+      if (node.id?.type === "Identifier" && isScriptCreate(node.init)) script.add(node.id.name);
+      else if (node.init) patternNames(node.id).forEach((n) => other.add(n));
+    } else if (node.type === "AssignmentExpression" && node.left?.type === "Identifier") {
+      if (node.operator === "=" && isScriptCreate(node.right)) script.add(node.left.name);
+      else other.add(node.left.name);
+    } else if (node.type === "AssignmentExpression" && node.left?.type !== "MemberExpression") {
+      patternNames(node.left).forEach((n) => other.add(n)); // destructuring assignment
+    } else if (
+      node.type === "FunctionDeclaration" || node.type === "FunctionExpression" ||
+      node.type === "ArrowFunctionExpression" || node.type === "ObjectMethod" || node.type === "ClassMethod"
+    ) {
+      if (node.id?.type === "Identifier") other.add(node.id.name);
+      for (const p of node.params ?? []) patternNames(p).forEach((n) => other.add(n));
+    } else if (node.type === "ClassDeclaration" && node.id?.type === "Identifier") {
+      other.add(node.id.name);
+    } else if (node.type === "CatchClause") {
+      patternNames(node.param).forEach((n) => other.add(n));
+    } else if (node.type === "ForInStatement" || node.type === "ForOfStatement") {
+      const left = node.left?.type === "VariableDeclaration" ? node.left.declarations?.[0]?.id : node.left;
+      patternNames(left).forEach((n) => other.add(n));
+    } else if (
+      node.type === "ImportSpecifier" || node.type === "ImportDefaultSpecifier" || node.type === "ImportNamespaceSpecifier"
+    ) {
+      if (node.local?.type === "Identifier") other.add(node.local.name);
+    } else if (node.type === "UpdateExpression" && node.argument?.type === "Identifier") {
+      other.add(node.argument.name);
+    }
+  });
+  for (const n of other) script.delete(n);
+  return script;
+}
+
+function injectedRemoteScripts(file: string, ast: any): Finding[] {
+  const names = scriptElementNames(ast);
+  const isScriptEl = (node: any): boolean =>
+    isScriptCreate(node) || (node?.type === "Identifier" && names.has(node.name));
+  const findings: Finding[] = [];
+  const report = (node: any, url: string, how: string) =>
+    findings.push({
+      ruleId: "MV3001",
+      severity: "reject",
+      confidence: "high",
+      title: "Remotely hosted code injected via a <script> element",
+      message: `${how} points a dynamically created <script> element at "${url}", which loads and runs remote code. Manifest V3 forbids remotely hosted code.`,
+      file,
+      line: node.loc?.start.line,
+      column: node.loc?.start.column,
+      chromeViolationId: "Blue Argon",
+      fixHint:
+        "Bundle the script in the extension package and inject the packaged copy (chrome.runtime.getURL(...) or chrome.scripting.executeScript({ files: [...] })). Fetching remote JSON/data is allowed; only executing remote code is Blue Argon.",
+    });
+
+  walk(ast, (node) => {
+    // <el>.src = "https://…"  /  <el>["src"] = "https://…"
+    if (node.type === "AssignmentExpression" && node.operator === "=" && node.left?.type === "MemberExpression") {
+      const left = node.left;
+      const prop = left.computed ? staticString(left.property) : left.property?.type === "Identifier" ? left.property.name : null;
+      const url = staticString(node.right);
+      if (prop === "src" && isRemote(url) && isScriptEl(left.object)) report(node, url, ".src assignment");
+    }
+    if (node.type === "CallExpression" && node.callee?.type === "MemberExpression" && !node.callee.computed) {
+      const method = node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+      // <el>.setAttribute("src", "https://…")
+      if (method === "setAttribute" && isScriptEl(node.callee.object)) {
+        const attr = staticString(node.arguments?.[0]);
+        const url = staticString(node.arguments?.[1]);
+        if (attr?.toLowerCase() === "src" && isRemote(url)) report(node, url, 'setAttribute("src")');
+      }
+      // Object.assign(<el>, { src: "https://…" })
+      if (
+        method === "assign" &&
+        node.callee.object?.type === "Identifier" &&
+        node.callee.object.name === "Object" &&
+        isScriptEl(node.arguments?.[0])
+      ) {
+        for (const src of node.arguments.slice(1)) {
+          if (src?.type !== "ObjectExpression") continue;
+          for (const p of src.properties ?? []) {
+            if (p.type !== "ObjectProperty") continue;
+            const key = p.computed ? staticString(p.key) : p.key?.type === "Identifier" ? p.key.name : staticString(p.key);
+            const url = staticString(p.value);
+            if (key === "src" && isRemote(url)) report(node, url, "Object.assign({ src })");
+          }
+        }
+      }
+    }
+  });
   return findings;
 }
 

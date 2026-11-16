@@ -13,6 +13,7 @@ const CASES: Array<[string, string | null, string, number]> = [
   ["broad-hosts", "PERM005", "needs_fixes", 1],
   ["remote-script", "MV3001", "high_rejection_risk", 2],
   ["remote-importscripts", "MV3001", "high_rejection_risk", 2],
+  ["remote-injected-script", "MV3001", "high_rejection_risk", 2],
   ["bad-csp", "MV3004", "high_rejection_risk", 2],
   ["eval", "MV3002", "needs_fixes", 1],
   ["mv2", "MV3003", "high_rejection_risk", 2],
@@ -56,5 +57,13 @@ describe("KTD 3: PERM001 ships at fix severity, never reject, in v0.1", () => {
     expect(perm001.every((f) => f.severity === "fix")).toBe(true);
     expect(perm001.some((f) => f.confidence === "high")).toBe(true);
     expect(report.verdict).toBe("needs_fixes");
+  });
+});
+
+describe("PERM005 fix hint points at optional host permissions", () => {
+  it("broad-hosts → hint mentions optional_host_permissions and chrome.permissions.request()", () => {
+    const f = fixtureReport("broad-hosts").findings.find((x) => x.ruleId === "PERM005");
+    expect(f?.fixHint).toContain("optional_host_permissions");
+    expect(f?.fixHint).toContain("chrome.permissions.request()");
   });
 });

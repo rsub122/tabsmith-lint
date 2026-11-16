@@ -82,7 +82,14 @@ exists, leave the severity at `fix`.
 
 ## Status
 
-Chrome-only, directory input, 12 rules (PERM001-005, MV3001-004, FUNC001-002).
+Chrome-only, directory input, 11 rules (PERM001-005, MV3001-004, FUNC001-002).
+
+MV3001 (remotely hosted code, `reject`) covers HTML `<script src="https://…">`, remote
+`import`/`import()`, remote `importScripts()`, and a remote `src` set on a
+`document.createElement("script")` element (`.src =`, `setAttribute("src", …)`,
+`Object.assign(…, { src })`). Fetching remote JSON/data with `fetch`/XHR is not
+remotely hosted code and is never flagged; neither are `img`/`iframe` sources or
+computed URLs.
 
 Firefox/Edge, ZIP/CRX input, SARIF, and a GitHub Action are on the roadmap.
 

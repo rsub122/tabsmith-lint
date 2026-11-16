@@ -33,15 +33,15 @@ function helpText(): string {
 Point it at an unpacked extension directory and it flags likely Chrome Web Store
 rejection risks before you submit:
   - unused / excessive permissions (the "Purple Potassium" rejection)
-  - Manifest V3 violations: remotely hosted code (script tags, import, importScripts),
-    string execution, forbidden extension-page CSP, Manifest V2
+  - Manifest V3 violations: remotely hosted code (script tags, injected <script> src,
+    import, importScripts), string execution, forbidden extension-page CSP, Manifest V2
   - broken packaging: missing or wrong-case file references
 
 ${USAGE}
 
 Options:
   --format human|json              output format (default: human)
-  --browser chrome                 target browser (only chrome in v0.1)
+  --browser chrome                 target browser (only chrome is supported for now)
   --min-severity reject|fix|info   minimum severity to report (default: info)
   -v, --version                    print version
   -h, --help                       show this help
@@ -69,7 +69,7 @@ export function run(argv: string[]): CliResult {
   }
 
   if (!dir) return { exitCode: 3, stderr: `No extension directory provided.\n${USAGE}` };
-  if (browser !== "chrome") return { exitCode: 3, stderr: `Only --browser chrome is supported in v0.1 (got "${browser}").` };
+  if (browser !== "chrome") return { exitCode: 3, stderr: `Only --browser chrome is currently supported (got "${browser}").` };
   if (!["human", "json"].includes(format)) return { exitCode: 3, stderr: `Invalid --format "${format}" (expected human|json).` };
   if (!["reject", "fix", "info"].includes(minSeverity)) return { exitCode: 3, stderr: `Invalid --min-severity "${minSeverity}" (expected reject|fix|info).` };
 
