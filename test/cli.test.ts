@@ -32,6 +32,9 @@ describe("U1: CLI arg parsing + exit codes", () => {
     expect(r.stdout).not.toMatch(/v0\.1\b/);
     expect(r.stdout).toMatch(/only chrome is supported/i);
     expect(r.stdout).toMatch(/injected <script> src/);
+    expect(r.stdout).toMatch(/chrome\.scripting remote files/);
+    expect(r.stdout).toMatch(/latent remote-code loaders/);
+    expect(r.stdout).toMatch(/strip security headers/);
   });
 
   it("--version prints a semver and exits 0", () => {

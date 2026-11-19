@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Remote Scripting Files",
+  "version": "1.0.0",
+  "permissions": ["scripting", "activeTab"],
+  "action": { "default_title": "Inject widget" },
+  "background": { "service_worker": "background.js" }
+}

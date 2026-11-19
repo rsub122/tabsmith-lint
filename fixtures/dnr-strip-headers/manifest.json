@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "DNR Strip Headers",
+  "version": "1.0.0",
+  "permissions": ["declarativeNetRequest"],
+  "host_permissions": ["<all_urls>"],
+  "declarative_net_request": {
+    "rule_resources": [{ "id": "frames", "enabled": true, "path": "rules.json" }]
+  }
+}

@@ -15,7 +15,8 @@ export const MV3002_SEVERITY: Severity = "fix";
 const REMOTE_SCRIPT_RE = /<script[^>]*\bsrc\s*=\s*["']((?:https?:)?\/\/[^"']+)["']/gi;
 
 /** MV3001 — remotely hosted code (HTML remote <script src>, remote import/import(),
- *  importScripts, and remote src on a JS-created <script> element). */
+ *  importScripts, remote src on a JS-created <script> element, and remote entries
+ *  in chrome.scripting.executeScript({files}) / registerContentScripts({js})). */
 function mv3001(model: ExtensionModel): Finding[] {
   const findings: Finding[] = [];
 
@@ -59,6 +60,7 @@ function mv3001(model: ExtensionModel): Finding[] {
       }
     });
     findings.push(...injectedRemoteScripts(script.relPath, script.ast));
+    findings.push(...remoteScriptingFiles(script.relPath, script.ast));
   }
   return findings;
 }
@@ -147,12 +149,64 @@ function scriptElementNames(ast: any): Set<string> {
   return script;
 }
 
-function injectedRemoteScripts(file: string, ast: any): Finding[] {
+interface ScriptSrcSet {
+  node: any;
+  /** the expression assigned to src */
+  value: any;
+  how: string;
+}
+
+/** Every place a `document.createElement("script")` element gets its `src` set,
+ *  literal or not: `.src =`, `["src"] =`, `setAttribute("src", …)`,
+ *  `Object.assign(el, { src })`. Shared by MV3001 (literal remote URL) and
+ *  MV3005 (computed URL = latent loader). */
+function scriptSrcSets(ast: any): ScriptSrcSet[] {
   const names = scriptElementNames(ast);
   const isScriptEl = (node: any): boolean =>
     isScriptCreate(node) || (node?.type === "Identifier" && names.has(node.name));
+  const out: ScriptSrcSet[] = [];
+  walk(ast, (node) => {
+    // <el>.src = …  /  <el>["src"] = …
+    if (node.type === "AssignmentExpression" && node.operator === "=" && node.left?.type === "MemberExpression") {
+      const left = node.left;
+      const prop = left.computed ? staticString(left.property) : left.property?.type === "Identifier" ? left.property.name : null;
+      if (prop === "src" && isScriptEl(left.object)) out.push({ node, value: node.right, how: ".src assignment" });
+    }
+    if (node.type === "CallExpression" && node.callee?.type === "MemberExpression" && !node.callee.computed) {
+      const method = node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+      // <el>.setAttribute("src", …)
+      if (method === "setAttribute" && isScriptEl(node.callee.object)) {
+        const attr = staticString(node.arguments?.[0]);
+        if (attr?.toLowerCase() === "src" && node.arguments?.[1]) {
+          out.push({ node, value: node.arguments[1], how: 'setAttribute("src")' });
+        }
+      }
+      // Object.assign(<el>, { src: … })
+      if (
+        method === "assign" &&
+        node.callee.object?.type === "Identifier" &&
+        node.callee.object.name === "Object" &&
+        isScriptEl(node.arguments?.[0])
+      ) {
+        for (const src of node.arguments.slice(1)) {
+          if (src?.type !== "ObjectExpression") continue;
+          for (const p of src.properties ?? []) {
+            if (p.type !== "ObjectProperty") continue;
+            const key = p.computed ? staticString(p.key) : p.key?.type === "Identifier" ? p.key.name : staticString(p.key);
+            if (key === "src") out.push({ node, value: p.value, how: "Object.assign({ src })" });
+          }
+        }
+      }
+    }
+  });
+  return out;
+}
+
+function injectedRemoteScripts(file: string, ast: any): Finding[] {
   const findings: Finding[] = [];
-  const report = (node: any, url: string, how: string) =>
+  for (const { node, value, how } of scriptSrcSets(ast)) {
+    const url = staticString(value);
+    if (!isRemote(url)) continue;
     findings.push({
       ruleId: "MV3001",
       severity: "reject",
@@ -166,39 +220,66 @@ function injectedRemoteScripts(file: string, ast: any): Finding[] {
       fixHint:
         "Bundle the script in the extension package and inject the packaged copy (chrome.runtime.getURL(...) or chrome.scripting.executeScript({ files: [...] })). Fetching remote JSON/data is allowed; only executing remote code is Blue Argon.",
     });
+  }
+  return findings;
+}
 
+// --- chrome.scripting with remote files ------------------------------------
+// `chrome.scripting.executeScript({ files: ["https://…"] })` and
+// `chrome.scripting.registerContentScripts([{ js: ["https://…"] }])` (also
+// updateContentScripts, and the browser.* namespace) name remote code as the
+// thing to inject. Only literal http(s):// or protocol-relative entries are
+// judged; local paths and computed entries are left alone. CSS entries are not
+// code and are not judged.
+const SCRIPTING_METHODS = new Set(["executeScript", "registerContentScripts", "updateContentScripts"]);
+
+function scriptingMethod(callee: any): string | null {
+  if (callee?.type !== "MemberExpression" && callee?.type !== "OptionalMemberExpression") return null;
+  if (callee.computed || callee.property?.type !== "Identifier" || !SCRIPTING_METHODS.has(callee.property.name)) return null;
+  const obj = callee.object;
+  if ((obj?.type !== "MemberExpression" && obj?.type !== "OptionalMemberExpression") || obj.computed) return null;
+  if (obj.property?.type !== "Identifier" || obj.property.name !== "scripting") return null;
+  return callee.property.name;
+}
+
+function objectProp(obj: any, name: string): any {
+  if (obj?.type !== "ObjectExpression") return undefined;
+  for (const p of obj.properties ?? []) {
+    if (p.type !== "ObjectProperty") continue;
+    const key = p.computed ? staticString(p.key) : p.key?.type === "Identifier" ? p.key.name : staticString(p.key);
+    if (key === name) return p.value;
+  }
+  return undefined;
+}
+
+function remoteScriptingFiles(file: string, ast: any): Finding[] {
+  const findings: Finding[] = [];
   walk(ast, (node) => {
-    // <el>.src = "https://…"  /  <el>["src"] = "https://…"
-    if (node.type === "AssignmentExpression" && node.operator === "=" && node.left?.type === "MemberExpression") {
-      const left = node.left;
-      const prop = left.computed ? staticString(left.property) : left.property?.type === "Identifier" ? left.property.name : null;
-      const url = staticString(node.right);
-      if (prop === "src" && isRemote(url) && isScriptEl(left.object)) report(node, url, ".src assignment");
-    }
-    if (node.type === "CallExpression" && node.callee?.type === "MemberExpression" && !node.callee.computed) {
-      const method = node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
-      // <el>.setAttribute("src", "https://…")
-      if (method === "setAttribute" && isScriptEl(node.callee.object)) {
-        const attr = staticString(node.arguments?.[0]);
-        const url = staticString(node.arguments?.[1]);
-        if (attr?.toLowerCase() === "src" && isRemote(url)) report(node, url, 'setAttribute("src")');
-      }
-      // Object.assign(<el>, { src: "https://…" })
-      if (
-        method === "assign" &&
-        node.callee.object?.type === "Identifier" &&
-        node.callee.object.name === "Object" &&
-        isScriptEl(node.arguments?.[0])
-      ) {
-        for (const src of node.arguments.slice(1)) {
-          if (src?.type !== "ObjectExpression") continue;
-          for (const p of src.properties ?? []) {
-            if (p.type !== "ObjectProperty") continue;
-            const key = p.computed ? staticString(p.key) : p.key?.type === "Identifier" ? p.key.name : staticString(p.key);
-            const url = staticString(p.value);
-            if (key === "src" && isRemote(url)) report(node, url, "Object.assign({ src })");
-          }
-        }
+    if (node.type !== "CallExpression" && node.type !== "OptionalCallExpression") return;
+    const method = scriptingMethod(node.callee);
+    if (!method) return;
+    const arg = node.arguments?.[0];
+    const lists: any[] = [];
+    if (method === "executeScript") lists.push(objectProp(arg, "files"));
+    else if (arg?.type === "ArrayExpression") for (const el of arg.elements ?? []) lists.push(objectProp(el, "js"));
+    for (const list of lists) {
+      if (list?.type !== "ArrayExpression") continue;
+      for (const el of list.elements ?? []) {
+        const url = staticString(el);
+        if (!isRemote(url)) continue;
+        const key = method === "executeScript" ? "files" : "js";
+        findings.push({
+          ruleId: "MV3001",
+          severity: "reject",
+          confidence: "high",
+          title: "Remotely hosted code passed to chrome.scripting",
+          message: `scripting.${method}() lists "${url}" in ${key}, which injects code from a remote URL. Manifest V3 forbids remotely hosted code (and Chrome only accepts files packaged with the extension here).`,
+          file,
+          line: el.loc?.start.line ?? node.loc?.start.line,
+          column: el.loc?.start.column,
+          chromeViolationId: "Blue Argon",
+          fixHint: `Bundle the script in the extension package and list its packaged path in ${key} (e.g. "scripts/content.js").`,
+        });
       }
     }
   });
@@ -249,6 +330,148 @@ function remoteImport(file: string, node: any, url: string, via: "import" | "imp
         ? "Bundle the script inside the extension package and importScripts() the local copy."
         : "Bundle the dependency inside the extension package instead of importing it remotely.",
   };
+}
+
+// --- MV3005: latent remote-code loaders ------------------------------------
+// Review judges what bundled code *could* do, not just what it does by default
+// (e.g. a shared widget that can inject an rrweb recorder <script> it never
+// uses still drew a Blue Argon rejection). MV3005 surfaces that tier without
+// condemning it, so it ships at `fix` / `info`, never `reject`:
+//  (a) `fix`: a createElement("script") element (or importScripts) is given a
+//      COMPUTED src, and either the expression starts with a remote URL prefix
+//      (`"https://cdn/" + v`, `` `https://cdn/${v}.js` ``) or the same file also
+//      contains a remote `.js`/`.mjs` URL string literal;
+//  (b) `info`: remote `.js`/`.mjs` URL string literals in shipped JS that no
+//      MV3001/MV3005 finding already explains (one finding per file).
+// Precision: only URLs whose path ends in .js/.mjs count, so remote JSON/data
+// endpoints, images and pages are never flagged; chrome.runtime.getURL(...)
+// sources are local; literal remote srcs are MV3001's job.
+const REMOTE_JS_RE = /^(?:https?:)?\/\/[^\s"'`<>()]+\.m?js(?:[?#][^\s"'`<>]*)?$/i;
+
+// Links to a source-code *page* (GitHub/GitLab/Bitbucket blob/tree views) are documentation, not scripts.
+const SOURCE_VIEWER_RE = /^(?:https?:)?\/\/(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org)\/[^?#]*\/(?:blob|tree|src)\//i;
+
+function isRemoteJsUrl(v: unknown): v is string {
+  return typeof v === "string" && v.length < 2048 && REMOTE_JS_RE.test(v) && !SOURCE_VIEWER_RE.test(v);
+}
+
+/** chrome|browser.runtime.getURL(...) / .extension.getURL(...) → a packaged file. */
+function isGetUrlCall(node: any): boolean {
+  if (node?.type !== "CallExpression") return false;
+  const c = node.callee;
+  return (
+    c?.type === "MemberExpression" && !c.computed &&
+    c.property?.type === "Identifier" && c.property.name === "getURL" &&
+    c.object?.type === "MemberExpression" && !c.object.computed &&
+    c.object.property?.type === "Identifier" &&
+    (c.object.property.name === "runtime" || c.object.property.name === "extension")
+  );
+}
+
+/** Leading static text of a string-building expression ("a" + x, `a${x}`). */
+function staticPrefix(node: any): string | null {
+  if (node?.type === "StringLiteral") return node.value;
+  if (node?.type === "TemplateLiteral") return node.quasis?.[0]?.value?.cooked ?? null;
+  if (node?.type === "BinaryExpression" && node.operator === "+") return staticPrefix(node.left);
+  return null;
+}
+
+const BANNER_RE = /^\s*(?:\/\*[!*]?|\/\/)\s*(?:@license\s+)?(@?[A-Za-z][\w./-]*)\s+v?(\d+\.\d+\.\d+[\w.-]*)/;
+const VENDOR_DIR_RE = /(?:^|\/)(?:vendor|vendors|third[_-]?party|lib|libs)\/([^/]+?)(?:\.min)?\.m?js$/i;
+
+/** Best-effort name of the bundled package a file comes from (banner or vendor path). */
+export function probablePackage(relPath: string, content: string): string | null {
+  const b = BANNER_RE.exec(content.slice(0, 1000));
+  if (b) return `${b[1]}@${b[2]}`;
+  const v = VENDOR_DIR_RE.exec(relPath);
+  return v ? v[1] : null;
+}
+
+function remoteJsLiterals(ast: any): { url: string; line?: number }[] {
+  const out: { url: string; line?: number }[] = [];
+  walk(ast, (node) => {
+    const v = node.type === "StringLiteral" || node.type === "TemplateLiteral" ? staticString(node) : null;
+    if (isRemoteJsUrl(v)) out.push({ url: v, line: node.loc?.start.line });
+  });
+  return out;
+}
+
+function mv3005(model: ExtensionModel): Finding[] {
+  const findings: Finding[] = [];
+  const explained = new Set<string>(); // file\0url already covered by MV3001
+  for (const f of mv3001(model)) {
+    if (!f.file) continue;
+    for (const m of f.message.matchAll(/"([^"]+)"/g)) explained.add(`${f.file}\0${m[1]}`);
+  }
+
+  for (const script of model.scriptFiles) {
+    if (!script.ast) continue;
+    const file = script.relPath;
+    const literals = remoteJsLiterals(script.ast).filter((l) => !explained.has(`${file}\0${l.url}`));
+    const urls = [...new Set(literals.map((l) => l.url))];
+    const pkg = probablePackage(file, script.content);
+    const from = pkg ? ` This file looks like bundled code from ${pkg}.` : "";
+    const list = (u: string[]) => u.slice(0, 3).map((x) => `"${x}"`).join(", ") + (u.length > 3 ? ` (+${u.length - 3} more)` : "");
+
+    const sinks: { node: any; value: any; how: string }[] = scriptSrcSets(script.ast).filter(
+      (s) => staticString(s.value) === null,
+    );
+    walk(script.ast, (node) => {
+      if (node.type === "CallExpression" && isImportScriptsCallee(node.callee)) {
+        for (const arg of node.arguments ?? []) {
+          if (staticString(arg) === null && arg.type !== "SpreadElement") sinks.push({ node, value: arg, how: "importScripts()" });
+        }
+      }
+    });
+
+    // One `fix` finding per file (first loader), other loader lines listed, to keep bundles readable.
+    let latent = false;
+    const hits: { node: any; message: string }[] = [];
+    for (const { node, value, how } of sinks) {
+      if (isGetUrlCall(value)) continue;
+      const prefix = staticPrefix(value);
+      if (isRemote(prefix)) {
+        hits.push({ node, message: `${how} loads a script from a URL built at runtime on the remote prefix "${prefix}". Even if this path never runs, reviewers treat it as remotely hosted code.` });
+      } else if (urls.length > 0) {
+        latent = true;
+        hits.push({ node, message: `${how} loads a script from a computed URL, and this file also contains the remote script URL ${list(urls)}. Review checks what bundled code could do, so this latent loader can draw a Blue Argon rejection even if it never runs.` });
+      }
+    }
+    if (hits.length > 0) {
+      hits.sort((a, b) => (a.node.loc?.start.index ?? 0) - (b.node.loc?.start.index ?? 0));
+      const first = hits[0];
+      const more = [...new Set(hits.slice(1).map((h) => h.node.loc?.start.line).filter((l) => l !== undefined && l !== first.node.loc?.start.line))];
+      const also = more.length ? ` Other script loads in this file: line${more.length > 1 ? "s" : ""} ${more.slice(0, 10).join(", ")}${more.length > 10 ? ", …" : ""}.` : "";
+      findings.push({
+        ruleId: "MV3005",
+        severity: "fix",
+        confidence: "medium",
+        title: "Latent remote-code loader",
+        message: first.message + also + from,
+        file,
+        line: first.node.loc?.start.line,
+        column: first.node.loc?.start.column,
+        chromeViolationId: "Blue Argon",
+        fixHint:
+          "If the extension never needs this loader, strip or stub it at build time (or configure the package not to include it) and mention it in the submission notes. If it is needed, bundle the script and load the packaged copy via chrome.runtime.getURL(...). Fetching remote JSON/data is fine.",
+      });
+    }
+
+    if (!latent && urls.length > 0) {
+      findings.push({
+        ruleId: "MV3005",
+        severity: "info",
+        confidence: "low",
+        title: "Remote script URL in shipped code",
+        message: `Shipped code contains the remote script URL ${list(urls)}. No loader was found for it, but reviewers search bundles for remote .js URLs; check that nothing can load it.${from}`,
+        file,
+        line: literals[0]?.line,
+        chromeViolationId: "Blue Argon",
+        fixHint: "Remove unused remote script URLs at build time, or explain them in the submission notes.",
+      });
+    }
+  }
+  return findings;
 }
 
 const STRING_TIMERS = new Set(["setTimeout", "setInterval"]);
@@ -377,4 +600,4 @@ function mv3004(model: ExtensionModel): Finding[] {
   }];
 }
 
-export const mv3Rules = [mv3001, mv3002, mv3003, mv3004];
+export const mv3Rules = [mv3001, mv3002, mv3003, mv3004, mv3005];

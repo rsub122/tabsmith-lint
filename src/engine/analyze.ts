@@ -4,9 +4,14 @@ import type {
   Finding,
   HostAccessSignal,
   Severity,
+  DnrRuleset,
+  ManifestJson,
 } from "./model.js";
 import { loadManifest } from "./manifest.js";
-import { discoverFiles, isScript, isHtml } from "./file-discovery.js";
+import { discoverFiles, isScript, isHtml, isWithinRoot, refToRelPath } from "./file-discovery.js";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { stripBom } from "./source-lines.js";
 import { collectManifestRefs } from "./manifest-refs.js";
 import { parseScript } from "../parse/parse-script.js";
 import { extractFromScripts } from "../parse/extract-api-calls.js";
@@ -49,6 +54,7 @@ export function analyze(rootDir: string, options: AnalyzeOptions): LintReport {
     hostAccessSignals,
     manifestRefs: manifestRefs.all,
     runtimeRequestedPermissions: extraction.runtimeRequestedPermissions,
+    dnrRulesets: loadDnrRulesets(rootDir, manifest),
   };
 
   const ruleFindings = runRules(model);
@@ -100,6 +106,30 @@ function deriveHostSignals(apiCalls: ExtensionModel["apiCalls"]): HostAccessSign
     else if (c.namespace === "webRequest") out.push({ kind: "webRequest", file: c.file, line: c.line });
     else if (c.namespace === "declarativeNetRequest") out.push({ kind: "declarativeNetRequest", file: c.file, line: c.line });
     else if (c.namespace === "scripting" && c.path.includes("executeScript")) out.push({ kind: "scripting.executeScript", file: c.file, line: c.line });
+  }
+  return out;
+}
+
+/** Read static DNR rulesets named in the manifest. Paths outside the package,
+ *  missing files and invalid JSON are skipped here (FUNC001 reports missing files). */
+function loadDnrRulesets(rootDir: string, manifest: ManifestJson): DnrRuleset[] {
+  const resources = (manifest as any).declarative_net_request?.rule_resources;
+  if (!Array.isArray(resources)) return [];
+  const out: DnrRuleset[] = [];
+  for (const rs of resources) {
+    if (typeof rs?.path !== "string") continue;
+    const rel = refToRelPath(rs.path);
+    if (!isWithinRoot(rootDir, rel)) continue;
+    const abs = join(rootDir, rel);
+    try {
+      if (!existsSync(abs) || !statSync(abs).isFile()) continue;
+      const content = stripBom(readFileSync(abs, "utf8"));
+      let rules: unknown = null;
+      try { rules = JSON.parse(content); } catch { rules = null; }
+      out.push({ relPath: rel, id: typeof rs.id === "string" ? rs.id : undefined, enabled: rs.enabled !== false, content, rules });
+    } catch {
+      continue;
+    }
   }
   return out;
 }

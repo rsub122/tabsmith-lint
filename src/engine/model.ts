@@ -75,6 +75,17 @@ export interface ManifestFileRef {
   source: string;
 }
 
+/** A static declarativeNetRequest ruleset from declarative_net_request.rule_resources. */
+export interface DnrRuleset {
+  relPath: string;
+  id?: string;
+  /** manifest `enabled` flag (static rulesets can still be enabled at runtime) */
+  enabled: boolean;
+  content: string;
+  /** parsed JSON, or null when the file is missing or not valid JSON */
+  rules: unknown;
+}
+
 export interface ExtensionModel {
   rootDir: string;
   manifest: ManifestJson;
@@ -89,6 +100,8 @@ export interface ExtensionModel {
   manifestRefs: ManifestFileRef[];
   /** Permission names passed to chrome.permissions.request/contains at runtime. */
   runtimeRequestedPermissions: string[];
+  /** Static DNR rulesets that exist inside the package and were read. */
+  dnrRulesets: DnrRuleset[];
 }
 
 export interface Finding {

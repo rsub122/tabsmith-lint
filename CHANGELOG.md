@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-19
+
+### Added
+- **MV3001 now covers `chrome.scripting` with remote files** (Blue Argon, `reject`):
+  a literal `https://`, `http://` or protocol-relative entry in
+  `scripting.executeScript({ files })`, `registerContentScripts([{ js }])` or
+  `updateContentScripts([{ js }])` (`chrome.*` or `browser.*`). Local paths, computed
+  entries, `func` injections and CSS files are not flagged.
+- **New rule MV3005: latent remote-code loader** (Blue Argon). Bundled code that
+  *could* load a remote script, which reviewers judge even if it never runs:
+  - `fix`: a `document.createElement("script")` element (or `importScripts`) given a
+    computed `src` that is built on a remote prefix (`"https://cdn/" + v`,
+    `` `https://cdn/${v}.js` ``), or whose file also contains a remote `.js`/`.mjs`
+    URL literal. One finding per file, listing the other loader lines; it names the
+    URL and the bundled package when a banner or `vendor/` path identifies it.
+  - `info`: remote `.js`/`.mjs` URL literals in shipped code that no other finding
+    explains (never changes the verdict).
+  Only `.js`/`.mjs` URLs count, so remote JSON/data fetches are never flagged;
+  `chrome.runtime.getURL(...)` sources and GitHub/GitLab source-page links are ignored.
+- **New rule SEC001: declarativeNetRequest rules that strip security headers.**
+  `modifyHeaders` rules (static rulesets and literal `updateDynamicRules` /
+  `updateSessionRules` rules) that `remove` or `set` `Content-Security-Policy`
+  (and `-Report-Only`), `X-Frame-Options`, `Cross-Origin-Opener/Embedder/Resource-Policy`
+  or `Strict-Transport-Security`. `fix` when the condition is not scoped to specific
+  domains and the extension has broad host access; `info` when scoped or host access
+  is narrow. `append` and request headers are not judged.
+- Fixtures `remote-scripting-files`, `latent-loader` and `dnr-strip-headers`, and
+  67 new tests (128 → 195).
+
+### Precision
+- On the corpus (106 Chrome samples + 7 built/minified releases, plus the full
+  312-extension cache including `_archive`), findings are unchanged: 0 MV3005 and
+  0 SEC001 findings, MV3001 still 13, and the PERM001 scores are the same.
+- On 13 popular npm browser packages bundled into a test extension (jQuery, lodash,
+  axios, React DOM, Vue, Chart.js, DOMPurify, Sentry, PostHog, rrweb,
+  webextension-polyfill, Mixpanel, Amplitude), only the Mixpanel and Amplitude CDN
+  snippet loaders are reported, and both really do load a remote script.
+
+### Changed
+- `--help` and the README list the new detections; the README rule count is now 13.
+
 ## [0.3.0] - 2026-11-16
 
 ### Added

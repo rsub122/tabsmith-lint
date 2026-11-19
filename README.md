@@ -24,8 +24,9 @@ Chrome reviewers flag:
 | Violation ID | What it means | tabsmith rules |
 |---|---|---|
 | Purple Potassium | Excessive / unused permissions | PERM001, PERM003, PERM004, PERM005 |
-| Blue Argon | Remotely hosted code / string execution / forbidden CSP | MV3001, MV3002, MV3004 |
+| Blue Argon | Remotely hosted code / latent remote loaders / string execution / forbidden CSP | MV3001, MV3005, MV3002, MV3004 |
 | Yellow Magnesium | Functionality / broken packaging | FUNC001, FUNC002 |
+| Harmful / unexpected behavior | DNR rules that strip sites' security headers | SEC001 |
 
 ```bash
 npx tabsmith-lint ./my-extension
@@ -82,14 +83,32 @@ exists, leave the severity at `fix`.
 
 ## Status
 
-Chrome-only, directory input, 11 rules (PERM001-005, MV3001-004, FUNC001-002).
+Chrome-only, directory input, 13 rules (PERM001-005, MV3001-005, FUNC001-002, SEC001).
 
 MV3001 (remotely hosted code, `reject`) covers HTML `<script src="https://…">`, remote
-`import`/`import()`, remote `importScripts()`, and a remote `src` set on a
+`import`/`import()`, remote `importScripts()`, a remote `src` set on a
 `document.createElement("script")` element (`.src =`, `setAttribute("src", …)`,
-`Object.assign(…, { src })`). Fetching remote JSON/data with `fetch`/XHR is not
+`Object.assign(…, { src })`), and remote entries in
+`chrome.scripting.executeScript({ files })` / `registerContentScripts([{ js }])` /
+`updateContentScripts`. Fetching remote JSON/data with `fetch`/XHR is not
 remotely hosted code and is never flagged; neither are `img`/`iframe` sources or
 computed URLs.
+
+MV3005 (latent remote-code loader) covers what MV3001 deliberately leaves out: bundled
+code that *could* load a remote script. A `<script>` element (or `importScripts`) given
+a computed `src` is `fix` when the URL is built on a remote prefix
+(`"https://cdn/" + v`) or the same file also contains a remote `.js`/`.mjs` URL literal;
+the finding names the URL and, when a banner or `vendor/` path identifies it, the
+bundled package. Other remote `.js` URL literals in shipped code are `info` (they never
+change the verdict). Only `.js`/`.mjs` URLs count, so remote JSON/data endpoints are
+never flagged.
+
+SEC001 (DNR security-header stripping) reads static `declarative_net_request` rulesets
+and literal `updateDynamicRules`/`updateSessionRules` rules, and flags `modifyHeaders`
+that `remove`/`set` `Content-Security-Policy`(-Report-Only), `X-Frame-Options`,
+`Cross-Origin-Opener/Embedder/Resource-Policy` or `Strict-Transport-Security`. It is
+`fix` when the condition isn't scoped to specific domains and the extension has broad
+host access, otherwise `info`.
 
 Firefox/Edge, ZIP/CRX input, SARIF, and a GitHub Action are on the roadmap.
 
