@@ -17,6 +17,7 @@ const CASES: Array<[string, string | null, string, number]> = [
   ["remote-scripting-files", "MV3001", "high_rejection_risk", 2],
   ["latent-loader", "MV3005", "needs_fixes", 1],
   ["dnr-strip-headers", "SEC001", "needs_fixes", 1],
+  ["obfuscated-vendor", "OBF001", "needs_fixes", 1],
   ["bad-csp", "MV3004", "high_rejection_risk", 2],
   ["eval", "MV3002", "needs_fixes", 1],
   ["mv2", "MV3003", "high_rejection_risk", 2],

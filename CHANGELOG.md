@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-23
+
+### Added
+- **New rule OBF001: obfuscated code** (Chrome Web Store "Red Titanium", `fix`).
+  Minification is allowed; obfuscation is not. OBF001 only fires on fingerprints that
+  minifiers never produce:
+  - `_0x`-style hexadecimal identifiers in quantity (10 or more distinct names);
+  - javascript-obfuscator's string-array rotator (`arr.push(arr.shift())` in a
+    function that also runs the `parseInt` checksum or a `while (--n)` countdown);
+  - string-array lookups: one function called 25+ times with small hex indices
+    (`_0x1a2b(0x1f4)`, 15+ distinct values). Colour and hash constants don't count;
+  - Dean Edwards' packer, `eval(function(p,a,c,k,e,d){…}(…))`;
+  - `eval` / `Function` / `new Function` run on a decoded string (`atob`, `unescape`,
+    `decodeURIComponent`, `String.fromCharCode`);
+  - 20+ plain-ASCII strings spelled entirely with `\x`/`\u` escapes.
+  One finding per file, at the first signal's line. It names the bundled package from
+  the license banner, a `node_modules/` or `vendor/` path, or the nearest bundler
+  module comment (esbuild `// node_modules/x/…`, webpack `./node_modules/x/…`). If
+  the nearest module comment is first-party code, no package is blamed.
+- **MV3005 now follows a remote prefix held in a variable**:
+  `var base = "https://cdn/"; s.src = base + "x.js"` (also template literals,
+  `setAttribute("src")`, `importScripts(base + …)`, and a variable that holds a full
+  remote URL) → `fix`. This only applies when every binding of that name in the file
+  is that one string literal; parameters, reassignments, `+=`, conflicting literals,
+  local or `getURL` prefixes are not followed. A URL that is already reported this way
+  is not repeated as an `info` finding.
+- Fixture `obfuscated-vendor`, and 66 new tests (195 → 261).
+
+### Precision
+- OBF001: 0 findings on 43 popular npm browser packages bundled into test extensions
+  (12,041 script files: lodash, react-dom, vue, chart.js, three, pdf.js,
+  @babel/standalone, firebase, crypto-js, node-forge, openpgp, libsodium, sql.js,
+  highlight.js, katex, moment, d3, jszip, core-js and more), 0 on the 7 minified
+  release extensions (457 files), and 0 on the Google samples. On 38 obfuscated
+  samples (javascript-obfuscator 5.10.1 in 11 configurations over 3 inputs, plus
+  packer, `eval(atob)`, `new Function(String.fromCharCode)`, bundle and vendor-path
+  cases) it flagged 37. The miss is a 30-line script obfuscated with mangled names and
+  without rotation.
+- MV3005 change: corpus findings are unchanged (full cache scan identical). On the 13
+  packages from v0.4.0 nothing changed. Of the 30 new packages, one finding changed:
+  three.js `examples/jsm/physics/AmmoPhysics.js` (`script.src = AMMO_PATH`, a real
+  jsDelivr loader) was already `fix`, and its message now names the variable.
+
+### Changed
+- `--help` and the README list OBF001; the README rule count is now 14 and the
+  violation table has a Red Titanium row.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added

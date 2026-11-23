@@ -111,16 +111,25 @@ function patternNames(pattern: any, out: string[] = []): string[] {
   return out;
 }
 
-/** Names bound ONLY to document.createElement("script") anywhere in the file. */
-function scriptElementNames(ast: any): Set<string> {
-  const script = new Set<string>();
+/** Names whose EVERY binding in the file is a value accepted by `valueOf` (all
+ *  bindings agreeing on that value). Any parameter, other initializer, reassignment,
+ *  update or conflicting value with the same name drops it — reused/minified names
+ *  are skipped, never guessed. */
+function namesBoundOnlyTo<T>(ast: any, valueOf: (init: any) => T | null): Map<string, T> {
+  const bound = new Map<string, T>();
   const other = new Set<string>();
+  const record = (name: string, v: T) => {
+    if (bound.has(name) && bound.get(name) !== v) other.add(name);
+    else bound.set(name, v);
+  };
   walk(ast, (node) => {
     if (node.type === "VariableDeclarator") {
-      if (node.id?.type === "Identifier" && isScriptCreate(node.init)) script.add(node.id.name);
+      const v = node.id?.type === "Identifier" && node.init ? valueOf(node.init) : null;
+      if (v !== null) record(node.id.name, v);
       else if (node.init) patternNames(node.id).forEach((n) => other.add(n));
     } else if (node.type === "AssignmentExpression" && node.left?.type === "Identifier") {
-      if (node.operator === "=" && isScriptCreate(node.right)) script.add(node.left.name);
+      const v = node.operator === "=" ? valueOf(node.right) : null;
+      if (v !== null) record(node.left.name, v);
       else other.add(node.left.name);
     } else if (node.type === "AssignmentExpression" && node.left?.type !== "MemberExpression") {
       patternNames(node.left).forEach((n) => other.add(n)); // destructuring assignment
@@ -145,8 +154,18 @@ function scriptElementNames(ast: any): Set<string> {
       other.add(node.argument.name);
     }
   });
-  for (const n of other) script.delete(n);
-  return script;
+  for (const n of other) bound.delete(n);
+  return bound;
+}
+
+/** Names bound ONLY to document.createElement("script") anywhere in the file. */
+function scriptElementNames(ast: any): Set<string> {
+  return new Set(namesBoundOnlyTo(ast, (init) => (isScriptCreate(init) ? true : null)).keys());
+}
+
+/** Names bound ONLY to one string literal (e.g. `var base = "https://cdn.example/"`). */
+function constStringNames(ast: any): Map<string, string> {
+  return namesBoundOnlyTo(ast, (init) => staticString(init));
 }
 
 interface ScriptSrcSet {
@@ -368,11 +387,18 @@ function isGetUrlCall(node: any): boolean {
   );
 }
 
-/** Leading static text of a string-building expression ("a" + x, `a${x}`). */
-function staticPrefix(node: any): string | null {
+/** Leading static text of a string-building expression ("a" + x, `a${x}`). With
+ *  `consts`, a leading identifier bound only to one string literal resolves to it
+ *  (`var base = "https://cdn/"; base + "x.js"`, `` `${base}x.js` ``). */
+function staticPrefix(node: any, consts?: Map<string, string>): string | null {
   if (node?.type === "StringLiteral") return node.value;
-  if (node?.type === "TemplateLiteral") return node.quasis?.[0]?.value?.cooked ?? null;
-  if (node?.type === "BinaryExpression" && node.operator === "+") return staticPrefix(node.left);
+  if (node?.type === "Identifier") return consts?.get(node.name) ?? null;
+  if (node?.type === "TemplateLiteral") {
+    const head = node.quasis?.[0]?.value?.cooked ?? null;
+    if (head === "" && node.expressions?.length) return staticPrefix(node.expressions[0], consts);
+    return head;
+  }
+  if (node?.type === "BinaryExpression" && node.operator === "+") return staticPrefix(node.left, consts);
   return null;
 }
 
@@ -427,11 +453,17 @@ function mv3005(model: ExtensionModel): Finding[] {
     // One `fix` finding per file (first loader), other loader lines listed, to keep bundles readable.
     let latent = false;
     const hits: { node: any; message: string }[] = [];
+    const consts = sinks.length ? constStringNames(script.ast) : undefined;
+    const prefixes = new Set<string>(); // remote prefixes already reported by a fix finding
     for (const { node, value, how } of sinks) {
       if (isGetUrlCall(value)) continue;
-      const prefix = staticPrefix(value);
+      const prefix = staticPrefix(value, consts);
       if (isRemote(prefix)) {
-        hits.push({ node, message: `${how} loads a script from a URL built at runtime on the remote prefix "${prefix}". Even if this path never runs, reviewers treat it as remotely hosted code.` });
+        prefixes.add(prefix);
+        const msg = value.type === "Identifier"
+          ? `${how} loads a script from the variable ${value.name}, which only ever holds the remote URL (remote prefix) "${prefix}".`
+          : `${how} loads a script from a URL built at runtime on the remote prefix "${prefix}".`;
+        hits.push({ node, message: `${msg} Even if this path never runs, reviewers treat it as remotely hosted code.` });
       } else if (urls.length > 0) {
         latent = true;
         hits.push({ node, message: `${how} loads a script from a computed URL, and this file also contains the remote script URL ${list(urls)}. Review checks what bundled code could do, so this latent loader can draw a Blue Argon rejection even if it never runs.` });
@@ -457,15 +489,16 @@ function mv3005(model: ExtensionModel): Finding[] {
       });
     }
 
-    if (!latent && urls.length > 0) {
+    const unexplained = urls.filter((u) => !prefixes.has(u));
+    if (!latent && unexplained.length > 0) {
       findings.push({
         ruleId: "MV3005",
         severity: "info",
         confidence: "low",
         title: "Remote script URL in shipped code",
-        message: `Shipped code contains the remote script URL ${list(urls)}. No loader was found for it, but reviewers search bundles for remote .js URLs; check that nothing can load it.${from}`,
+        message: `Shipped code contains the remote script URL ${list(unexplained)}. No loader was found for it, but reviewers search bundles for remote .js URLs; check that nothing can load it.${from}`,
         file,
-        line: literals[0]?.line,
+        line: literals.find((l) => !prefixes.has(l.url))?.line,
         chromeViolationId: "Blue Argon",
         fixHint: "Remove unused remote script URLs at build time, or explain them in the submission notes.",
       });

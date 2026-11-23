@@ -26,6 +26,7 @@ Chrome reviewers flag:
 | Purple Potassium | Excessive / unused permissions | PERM001, PERM003, PERM004, PERM005 |
 | Blue Argon | Remotely hosted code / latent remote loaders / string execution / forbidden CSP | MV3001, MV3005, MV3002, MV3004 |
 | Yellow Magnesium | Functionality / broken packaging | FUNC001, FUNC002 |
+| Red Titanium | Obfuscated code (minification is fine) | OBF001 |
 | Harmful / unexpected behavior | DNR rules that strip sites' security headers | SEC001 |
 
 ```bash
@@ -83,7 +84,7 @@ exists, leave the severity at `fix`.
 
 ## Status
 
-Chrome-only, directory input, 13 rules (PERM001-005, MV3001-005, FUNC001-002, SEC001).
+Chrome-only, directory input, 14 rules (PERM001-005, MV3001-005, FUNC001-002, SEC001, OBF001).
 
 MV3001 (remotely hosted code, `reject`) covers HTML `<script src="https://…">`, remote
 `import`/`import()`, remote `importScripts()`, a remote `src` set on a
@@ -97,7 +98,9 @@ computed URLs.
 MV3005 (latent remote-code loader) covers what MV3001 deliberately leaves out: bundled
 code that *could* load a remote script. A `<script>` element (or `importScripts`) given
 a computed `src` is `fix` when the URL is built on a remote prefix
-(`"https://cdn/" + v`) or the same file also contains a remote `.js`/`.mjs` URL literal;
+(`"https://cdn/" + v`, including a prefix held in a variable bound only to that string,
+`var base = "https://cdn/"; s.src = base + "x.js"`) or the same file also contains a
+remote `.js`/`.mjs` URL literal;
 the finding names the URL and, when a banner or `vendor/` path identifies it, the
 bundled package. Other remote `.js` URL literals in shipped code are `info` (they never
 change the verdict). Only `.js`/`.mjs` URLs count, so remote JSON/data endpoints are
@@ -109,6 +112,17 @@ that `remove`/`set` `Content-Security-Policy`(-Report-Only), `X-Frame-Options`,
 `Cross-Origin-Opener/Embedder/Resource-Policy` or `Strict-Transport-Security`. It is
 `fix` when the condition isn't scoped to specific domains and the extension has broad
 host access, otherwise `info`.
+
+OBF001 (obfuscated code, Red Titanium, `fix`) looks for fingerprints that minifiers
+never produce: `_0x`-style hexadecimal identifiers in quantity, javascript-obfuscator's
+string-array rotator and hex-index lookups, Dean Edwards' `eval(function(p,a,c,k,e,d)…)`
+packer, `eval`/`Function` run on a decoded string (`eval(atob(…))`,
+`new Function(String.fromCharCode(…))`), and plain-text strings spelled with `\x`/`\u`
+escapes. One finding per file, naming the bundled package from its license banner,
+`node_modules/` or `vendor/` path, or the bundler's module comment. Measured precision:
+0 findings on 43 popular npm browser packages (lodash, react-dom, vue, chart.js, three,
+pdf.js, @babel/standalone, crypto libraries, ... — 12,041 script files), the 7 minified
+release extensions and the Google samples; 37 of 38 obfuscated samples flagged.
 
 Firefox/Edge, ZIP/CRX input, SARIF, and a GitHub Action are on the roadmap.
 

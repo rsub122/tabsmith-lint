@@ -151,3 +151,57 @@ if (a) {
     expect(f[0].message).toContain("Other script loads in this file: lines 6, 8.");
   });
 });
+
+describe("MV3005: remote prefix held in a variable (v0.5.0)", () => {
+  const el = 'const s = document.createElement("script"); ';
+  it.each([
+    `var base = "https://cdn.example.com/"; ${el}s.src = base + "x.js";`,
+    `const base = "https://cdn.example.com/libs"; ${el}s.src = \`\${base}/\${name}.js\`;`,
+    `let base = "//cdn.example.com/"; ${el}s.setAttribute("src", base + v);`,
+    `var base; base = "https://cdn.example.com/"; ${el}s.src = base + "x.js";`,
+    `const LOADER = "https://cdn.example.com/loader"; ${el}s.src = LOADER;`,
+    `const base = "https://cdn.example.com/"; importScripts(base + "worker.js");`,
+    `const base = "https://cdn.example.com/"; function a(){ return base; } ${el}s.src = base + "x.js";`,
+  ])("flags %s", (code) => {
+    const f = byRule(sw(code), "MV3005");
+    expect(f.length).toBe(1);
+    expect(f[0].severity).toBe("fix");
+    expect(f[0].message).toContain("remote prefix");
+    expect(f[0].message).toContain("cdn.example.com");
+    expect(byRule(sw(code), "MV3001")).toEqual([]);
+  });
+
+  it.each([
+    ["reassigned to a computed value", `var base = "https://cdn.example.com/"; base = cfg.cdn; ${el}s.src = base + "x.js";`],
+    ["compound assignment", `let base = "https://cdn.example.com/"; base += path; ${el}s.src = base + "x.js";`],
+    ["same name is a parameter elsewhere (minified reuse)", `var e = "https://cdn.example.com/"; function f(e) { ${el}s.src = e + "x.js"; }`],
+    ["two different literals", `var b = "https://a.example/"; if (x) { b = "https://b.example/"; } ${el}s.src = b + "x.js";`],
+    ["local prefix", `const base = "/scripts/"; ${el}s.src = base + "x.js";`],
+    ["getURL prefix", `const base = chrome.runtime.getURL(""); ${el}s.src = base + "x.js";`],
+    ["remote prefix variable used only for fetch", `const base = "https://api.example.com/"; fetch(base + "data.json");`],
+    ["prefix variable not leading", `const base = "https://cdn.example.com/"; ${el}s.src = local + base;`],
+  ])("does not flag: %s", (_label, code) => {
+    expect(byRule(sw(code), "MV3005")).toEqual([]);
+  });
+});
+
+describe("MV3005: variable holding a full remote script URL (three.js AmmoPhysics shape)", () => {
+  it("reports one fix finding naming the variable, without a duplicate info finding for the same URL", () => {
+    const code = `const AMMO_PATH = 'https://cdn.example.com/builds/ammo.wasm.js';
+function load() { const script = document.createElement('script'); script.src = AMMO_PATH; document.body.appendChild(script); }`;
+    const f = byRule(cs(code), "MV3005");
+    expect(f.map((x) => x.severity)).toEqual(["fix"]);
+    expect(f[0].message).toContain("variable AMMO_PATH");
+    expect(f[0].message).toContain("https://cdn.example.com/builds/ammo.wasm.js");
+    expect(f[0].line).toBe(2);
+  });
+
+  it("other remote .js literals in the same file are still reported at info", () => {
+    const code = `const A = 'https://cdn.example.com/a.js'; const B = 'https://cdn.example.com/b.js';
+const s = document.createElement('script'); s.src = A;`;
+    const f = byRule(cs(code), "MV3005");
+    expect(f.map((x) => x.severity)).toEqual(["fix", "info"]);
+    expect(f[1].message).toContain("b.js");
+    expect(f[1].message).not.toContain("/a.js");
+  });
+});

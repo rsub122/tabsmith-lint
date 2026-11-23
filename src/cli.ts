@@ -37,6 +37,8 @@ rejection risks before you submit:
     import, importScripts, chrome.scripting remote files), latent remote-code loaders
     in bundled code, string execution, forbidden extension-page CSP, Manifest V2
   - declarativeNetRequest rules that strip security headers (CSP, X-Frame-Options, ...)
+  - obfuscated code ("Red Titanium": javascript-obfuscator output, packers, eval of
+    decoded strings), naming the bundled package it comes from; minified code is fine
   - broken packaging: missing or wrong-case file references
 
 ${USAGE}

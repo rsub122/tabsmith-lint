@@ -35,6 +35,8 @@ describe("U1: CLI arg parsing + exit codes", () => {
     expect(r.stdout).toMatch(/chrome\.scripting remote files/);
     expect(r.stdout).toMatch(/latent remote-code loaders/);
     expect(r.stdout).toMatch(/strip security headers/);
+    expect(r.stdout).toMatch(/obfuscated code/);
+    expect(r.stdout).toMatch(/Red Titanium/);
   });
 
   it("--version prints a semver and exits 0", () => {
