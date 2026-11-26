@@ -8,6 +8,15 @@ const SCRIPT_EXT = [".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"];
 const HTML_EXT = [".html", ".htm"];
 const SCANNABLE = new Set([...SCRIPT_EXT, ...HTML_EXT]);
 const EXCLUDE_DIRS = new Set(["node_modules", ".git", "dist", "build", ".cache", "coverage"]);
+/** Inside an uploaded archive everything ships, so build-output folders are real
+ *  package code and must be scanned. node_modules/.git are still skipped for code
+ *  analysis (PKG001 reports them as files that should not ship). */
+const ARCHIVE_EXCLUDE_DIRS = new Set(["node_modules", ".git"]);
+
+export interface DiscoverOptions {
+  /** true when rootDir is an extracted .zip/.crx */
+  archive?: boolean;
+}
 
 function ext(path: string): string {
   const i = path.lastIndexOf(".");
@@ -66,12 +75,14 @@ function localScriptSrcs(htmlContent: string, htmlRel: string): string[] {
 /**
  * Two-pass discovery: manifest-directed entry points first (tagged "manifest"),
  * then a package-wide fallback scan (tagged "fallback"). Manifest tags win on
- * dedupe. node_modules/.git/build caches and source maps are excluded.
+ * dedupe. node_modules/.git/build caches and source maps are excluded (inside an
+ * extracted archive only node_modules/.git are, because build output ships).
  *
  * Takes pre-collected ManifestRefs so the caller can reuse them (e.g. for
  * model.manifestRefs) without collecting twice.
  */
-export function discoverFiles(rootDir: string, refs: ManifestRefs): VirtualFile[] {
+export function discoverFiles(rootDir: string, refs: ManifestRefs, options: DiscoverOptions = {}): VirtualFile[] {
+  const exclude = options.archive ? ARCHIVE_EXCLUDE_DIRS : EXCLUDE_DIRS;
   const byRel = new Map<string, VirtualFile>();
   const add = (vf: VirtualFile | null) => {
     if (!vf) return;
@@ -92,7 +103,7 @@ export function discoverFiles(rootDir: string, refs: ManifestRefs): VirtualFile[
   }
 
   // --- Pass 2: fallback scan ---
-  walk(rootDir, rootDir, (abs) => {
+  walk(rootDir, rootDir, exclude, (abs) => {
     const rel = toRel(rootDir, abs);
     if (rel === "manifest.json") return;
     if (rel.endsWith(".map")) return;
@@ -107,7 +118,7 @@ export function discoverFiles(rootDir: string, refs: ManifestRefs): VirtualFile[
   return [...byRel.values()];
 }
 
-function walk(rootDir: string, dir: string, onFile: (abs: string) => void) {
+function walk(rootDir: string, dir: string, exclude: Set<string>, onFile: (abs: string) => void) {
   let entries: import("node:fs").Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -117,8 +128,8 @@ function walk(rootDir: string, dir: string, onFile: (abs: string) => void) {
   for (const e of entries) {
     const abs = join(dir, e.name);
     if (e.isDirectory()) {
-      if (EXCLUDE_DIRS.has(e.name)) continue;
-      walk(rootDir, abs, onFile);
+      if (exclude.has(e.name)) continue;
+      walk(rootDir, abs, exclude, onFile);
     } else if (e.isFile()) {
       onFile(abs);
     }

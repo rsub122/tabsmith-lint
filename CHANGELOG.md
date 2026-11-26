@@ -4,6 +4,61 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-26
+
+### Added
+- **`.zip` / `.crx` input: lint exactly what you upload.**
+  `npx tabsmith-lint my-extension.zip` (or a CRX2/CRX3 file: header, then zip). Every
+  existing rule runs on the archive's contents. The reader uses only Node built-ins (no
+  new dependency) and reads the zip central directory through a file descriptor. It
+  supports stored and deflate entries, never writes outside a private temp directory
+  (it skips `../` and absolute entry names), never creates or follows symlinks, refuses
+  ZIP64, encrypted and multi-disk archives with a clear error, refuses entries that
+  inflate past their declared size, and caps extracted code/JSON at 512 MiB. Images and
+  other binaries are not extracted (empty placeholders keep FUNC001/FUNC002 accurate).
+  The temp directory is removed after every run, including runs that fail.
+  Inside an archive, `build/` and `dist/` folders are scanned like any other code
+  because they ship. `node_modules/` and `.git/` are still not code-scanned; PKG001
+  reports them instead.
+- If `manifest.json` is not at the zip root but inside a folder (zipping the folder
+  instead of its contents), the run exits 3 and says so, naming the nested path. The
+  Chrome Web Store requires the manifest at the root.
+- **New rule PKG001: files that should not ship** (archive input only):
+  - `fix`: `.env*` files, private keys (`*.pem`), `.git`/`.svn`/`.hg` metadata,
+    `node_modules/`, entries with unsafe paths. A `node_modules` file that the
+    manifest (or a manifest page's `<script>`) actually loads drops that finding to
+    `info` and is named, so the advice never breaks the extension.
+  - `info`: source maps (allowed, but they publish your source), test folders and
+    `*.test.*`/`*.spec.*` files, OS junk (`.DS_Store`, `__MACOSX/`, `Thumbs.db`).
+  One finding per category, listing up to 5 paths and a count.
+- **New rule PKG002: `"key"` in manifest.json** (`info`, any input). It is a
+  development-time stable-ID field; the store assigns the published item its own ID.
+- **New rule PKG003: 2 GB package limit** (archive input): `reject` above 2 GiB
+  ("Zip files larger than 2GB will be rejected"), `info` within 10% of it.
+- Human output shows "N files in package" for archive input; JSON adds
+  `stats.packageFiles` and reports the archive path as `inputPath`.
+- `--help`, the usage line and the README (rule table, archive section) cover archive
+  input and the PKG rules.
+- 46 new tests (261 → 307), including a test-only zip writer (stored/deflate, CRX2/3,
+  unix modes) and zip-slip, symlink, zip-bomb, bad-CRX and temp-cleanup cases.
+
+### Precision
+- Archive vs. directory parity: the 295 Google sample directories with a valid
+  manifest (zipped with Python's zipfile), 6 real release zips (Dark Reader,
+  SponsorBlock, Stylus, Return YouTube Dislike, FastForward, Violentmonkey) and 2
+  CRX3 files downloaded from the Chrome Web Store (uBlock Origin Lite, 933 files;
+  Dark Reader) all gave the same verdict and the same non-PKG findings as the
+  unpacked directory. uBlock's release zip nests `manifest.json` in a folder and is
+  correctly refused. The 9 sample manifests that are invalid JSON fail the same way in
+  both modes.
+- PKG001 on that corpus: 5 findings, all `info`, all real test folders. A first draft
+  also treated `spec/` folders as tests. That flagged CodeMirror's runtime RPM `spec`
+  language mode, so `spec/` was dropped (only `*.spec.*` file names count).
+- PKG002: 17 findings (16 samples + Stylus's `-id` build), every one a literal
+  top-level `"key"`.
+- Existing gates unchanged: 0 crashes on the samples and releases, PERM001 0% false
+  positives, 28/28 verdicts.
+
 ## [0.5.0] - 2026-11-23
 
 ### Added

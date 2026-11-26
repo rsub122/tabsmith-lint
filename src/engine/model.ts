@@ -102,6 +102,25 @@ export interface ExtensionModel {
   runtimeRequestedPermissions: string[];
   /** Static DNR rulesets that exist inside the package and were read. */
   dnrRulesets: DnrRuleset[];
+  /** Set only when the input was a .zip/.crx: what actually ships. */
+  package?: PackageInfo;
+}
+
+/** One file inside an uploaded archive (sizes from the zip central directory). */
+export interface PackageFile {
+  relPath: string;
+  size: number;
+  compressedSize: number;
+}
+
+export interface PackageInfo {
+  kind: "zip" | "crx";
+  /** archive size on disk, bytes */
+  archiveBytes: number;
+  /** every file in the archive, including ones discovery never reads */
+  files: PackageFile[];
+  /** entry names skipped because they escape the package root ("../x", "/x") */
+  unsafePaths: string[];
 }
 
 export interface Finding {
@@ -121,6 +140,8 @@ export interface BrowserReport {
   verdict: Verdict;
   findings: Finding[];
   stats: {
+    /** present when the input was an archive: number of files in the package */
+    packageFiles?: number;
     filesScanned: number;
     scriptsParsed: number;
     parseErrors: number;

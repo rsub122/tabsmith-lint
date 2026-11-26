@@ -37,6 +37,10 @@ describe("U1: CLI arg parsing + exit codes", () => {
     expect(r.stdout).toMatch(/strip security headers/);
     expect(r.stdout).toMatch(/obfuscated code/);
     expect(r.stdout).toMatch(/Red Titanium/);
+    expect(r.stdout).toMatch(/\.zip\/\.crx you upload/);
+    expect(r.stdout).toMatch(/package hygiene/);
+    expect(r.stdout).toMatch(/2 GB size limit/);
+    expect(r.stdout).toMatch(/extension\.zip \| extension\.crx/);
   });
 
   it("--version prints a semver and exits 0", () => {

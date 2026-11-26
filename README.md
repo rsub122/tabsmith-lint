@@ -11,8 +11,8 @@
 </p>
 
 A pre-submission compliance linter for browser extensions. It analyzes an unpacked
-Manifest V3 Chrome extension directory and reports likely Chrome Web Store rejection
-risks **before** you submit — unused/excessive permissions, missing permissions, MV3
+Manifest V3 Chrome extension (an unpacked directory, or the `.zip`/`.crx` you upload)
+and reports likely Chrome Web Store rejection risks **before** you submit — unused/excessive permissions, missing permissions, MV3
 violations, and broken file references — with a clear verdict and actionable fixes.
 
 **Catch the "Purple Potassium" permission rejection before you submit.** The most
@@ -28,11 +28,13 @@ Chrome reviewers flag:
 | Yellow Magnesium | Functionality / broken packaging | FUNC001, FUNC002 |
 | Red Titanium | Obfuscated code (minification is fine) | OBF001 |
 | Harmful / unexpected behavior | DNR rules that strip sites' security headers | SEC001 |
+| Upload / package hygiene | Secrets, `.git`, `node_modules` etc. in the zip; 2 GB limit; leftover `"key"` | PKG001, PKG003, PKG002 |
 
 ```bash
 npx tabsmith-lint ./my-extension
 npx tabsmith-lint ./my-extension --format json
 npx tabsmith-lint ./my-extension --min-severity reject
+npx tabsmith-lint ./my-extension.zip       # lint exactly what you upload (.zip or .crx)
 ```
 
 Exit codes: `0` pass · `1` needs fixes · `2` high rejection risk · `3` tool error.
@@ -84,7 +86,8 @@ exists, leave the severity at `fix`.
 
 ## Status
 
-Chrome-only, directory input, 14 rules (PERM001-005, MV3001-005, FUNC001-002, SEC001, OBF001).
+Chrome-only, directory or `.zip`/`.crx` input, 17 rules (PERM001-005, MV3001-005, FUNC001-002,
+SEC001, OBF001, PKG001-003).
 
 MV3001 (remotely hosted code, `reject`) covers HTML `<script src="https://…">`, remote
 `import`/`import()`, remote `importScripts()`, a remote `src` set on a
@@ -124,7 +127,30 @@ escapes. One finding per file, naming the bundled package from its license banne
 pdf.js, @babel/standalone, crypto libraries, ... — 12,041 script files), the 7 minified
 release extensions and the Google samples; 37 of 38 obfuscated samples flagged.
 
-Firefox/Edge, ZIP/CRX input, SARIF, and a GitHub Action are on the roadmap.
+**Archive input (`.zip`/`.crx`).** Pass the zip you upload to the Chrome Web Store (or a
+CRX2/CRX3 file: header, then zip) and every rule runs on exactly what ships. The reader
+uses only Node built-ins (no new dependency); it never writes outside a private temp
+directory, never follows symlinks, refuses ZIP64/encrypted entries, and caps extracted
+code at 512 MiB. Inside an archive, `build/`/`dist/` folders are scanned like any other
+code because they ship. If `manifest.json` sits inside a folder in the zip (the classic
+"zipped the folder, not its contents" mistake) you get exit 3 with that explanation.
+The package rules:
+
+| Rule | Severity | What it flags |
+|---|---|---|
+| PKG001 | `fix` | `.env*` files, private keys (`*.pem`), `.git`/`.svn`/`.hg`, `node_modules/`, or entries with unsafe (`../`, absolute) paths inside the archive. `node_modules` files the manifest actually loads drop it to `info` |
+| PKG001 | `info` | source maps (allowed, but they publish your source), test folders/`*.test.js`/`*.spec.js`, OS junk (`.DS_Store`, `__MACOSX/`, `Thumbs.db`) |
+| PKG002 | `info` | `"key"` in manifest.json (a development-only stable-ID field), for directories too |
+| PKG003 | `reject` / `info` | archive over the 2 GB package limit / within 10% of it |
+
+PKG001 and PKG003 run on archive input only: a source directory normally contains
+`node_modules`, `.git` and tests that never get zipped. Measured: the 295 Google sample
+directories with a valid manifest (zipped), 6 real release zips and 2 Chrome Web Store
+CRX downloads all gave the same verdict and the same non-PKG findings as the unpacked
+directory (a 7th release zip, uBlock's, nests `manifest.json` in a folder and is
+correctly refused). The only PKG001 hits were real test folders (`info`).
+
+Firefox/Edge, SARIF, and a GitHub Action are on the roadmap.
 
 Two rules are intentionally conservative in v0.1 (trust is the product): **PERM001**
 (unused permission) and **MV3002** (string execution: `eval`/`new Function`) both ship

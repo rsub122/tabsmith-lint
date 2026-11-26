@@ -3,7 +3,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { Severity } from "./engine/model.js";
-import { analyze } from "./engine/analyze.js";
+import { analyzeInput } from "./engine/analyze.js";
 import { ManifestError } from "./engine/manifest.js";
 import { verdictExitCode } from "./engine/verdict.js";
 import { renderHuman } from "./reporters/human.js";
@@ -16,7 +16,7 @@ export interface CliResult {
 }
 
 const USAGE =
-  "Usage: tabsmith-lint <extension-dir> [--format human|json] [--browser chrome] [--min-severity reject|fix|info]";
+  "Usage: tabsmith-lint <extension-dir | extension.zip | extension.crx> [--format human|json] [--browser chrome] [--min-severity reject|fix|info]";
 
 function version(): string {
   try {
@@ -30,8 +30,8 @@ function version(): string {
 function helpText(): string {
   return `tabsmith-lint v${version()} - pre-submission compliance linter for Manifest V3 Chrome extensions
 
-Point it at an unpacked extension directory and it flags likely Chrome Web Store
-rejection risks before you submit:
+Point it at an unpacked extension directory, or at the .zip/.crx you upload, and it
+flags likely Chrome Web Store rejection risks before you submit:
   - unused / excessive permissions (the "Purple Potassium" rejection)
   - Manifest V3 violations: remotely hosted code (script tags, injected <script> src,
     import, importScripts, chrome.scripting remote files), latent remote-code loaders
@@ -40,6 +40,9 @@ rejection risks before you submit:
   - obfuscated code ("Red Titanium": javascript-obfuscator output, packers, eval of
     decoded strings), naming the bundled package it comes from; minified code is fine
   - broken packaging: missing or wrong-case file references
+  - package hygiene (.zip/.crx input): .env files, private keys, .git, node_modules,
+    source maps, tests and OS junk inside the upload; the 2 GB size limit; a leftover
+    manifest "key"; manifest.json not at the zip root
 
 ${USAGE}
 
@@ -72,14 +75,14 @@ export function run(argv: string[]): CliResult {
     else return { exitCode: 3, stderr: `Unexpected argument: ${arg}\n${USAGE}` };
   }
 
-  if (!dir) return { exitCode: 3, stderr: `No extension directory provided.\n${USAGE}` };
+  if (!dir) return { exitCode: 3, stderr: `No extension directory or .zip/.crx provided.\n${USAGE}` };
   if (browser !== "chrome") return { exitCode: 3, stderr: `Only --browser chrome is currently supported (got "${browser}").` };
   if (!["human", "json"].includes(format)) return { exitCode: 3, stderr: `Invalid --format "${format}" (expected human|json).` };
   if (!["reject", "fix", "info"].includes(minSeverity)) return { exitCode: 3, stderr: `Invalid --min-severity "${minSeverity}" (expected reject|fix|info).` };
 
   let report;
   try {
-    report = analyze(dir, { version: version(), minSeverity });
+    report = analyzeInput(dir, { version: version(), minSeverity });
   } catch (e) {
     const msg = e instanceof ManifestError ? e.message : (e as Error).message;
     return { exitCode: 3, stderr: `error: ${msg}` };

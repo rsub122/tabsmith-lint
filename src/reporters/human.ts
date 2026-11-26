@@ -25,7 +25,8 @@ export function renderHuman(report: LintReport, minSeverity: Severity = "info"):
 
   lines.push(`tabsmith-lint v${report.version} analyzing ${report.inputPath}`);
   const mv = report.manifestVersion !== undefined ? `Manifest V${report.manifestVersion}` : "Manifest version unknown";
-  lines.push(`${mv}, ${chrome.stats.filesScanned} files scanned, ${chrome.stats.scriptsParsed} scripts parsed`);
+  const pkg = chrome.stats.packageFiles !== undefined ? `${chrome.stats.packageFiles} files in package, ` : "";
+  lines.push(`${mv}, ${pkg}${chrome.stats.filesScanned} files scanned, ${chrome.stats.scriptsParsed} scripts parsed`);
   lines.push("");
   lines.push(`CHROME: ${VERDICT_HEADER[chrome.verdict]}`);
   lines.push("");

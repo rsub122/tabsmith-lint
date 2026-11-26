@@ -6,8 +6,10 @@ import type {
   Severity,
   DnrRuleset,
   ManifestJson,
+  PackageInfo,
 } from "./model.js";
-import { loadManifest } from "./manifest.js";
+import { loadManifest, ManifestError } from "./manifest.js";
+import { extractArchive, isArchivePath } from "./archive.js";
 import { discoverFiles, isScript, isHtml, isWithinRoot, refToRelPath } from "./file-discovery.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -21,6 +23,46 @@ import { computeVerdict, filterByMinSeverity } from "./verdict.js";
 export interface AnalyzeOptions {
   version: string;
   minSeverity?: Severity;
+  /** internal: set by analyzeInput when rootDir is an extracted archive */
+  package?: PackageInfo;
+  /** internal: path to report as inputPath (the archive, not the temp dir) */
+  inputPath?: string;
+}
+
+/** CLI entry point: a directory, or a .zip/.crx exactly as uploaded to the
+ *  Chrome Web Store. Archives are extracted to a temp dir (code/JSON content
+ *  only; other files become empty placeholders) and removed afterwards. */
+export function analyzeInput(inputPath: string, options: AnalyzeOptions): LintReport {
+  if (!isArchivePath(inputPath) || (existsSync(inputPath) && statSync(inputPath).isDirectory())) {
+    return analyze(inputPath, options);
+  }
+  if (!existsSync(inputPath) || !statSync(inputPath).isFile()) {
+    throw new ManifestError(`Archive not found: ${inputPath}`);
+  }
+  const extracted = extractArchive(inputPath);
+  try {
+    const { listing } = extracted;
+    const paths = listing.entries.map((e) => e.relPath);
+    if (!paths.includes("manifest.json")) {
+      const nested = paths.filter((p) => /^[^/]+\/manifest\.json$/.test(p));
+      const hint = nested.length
+        ? ` Found ${nested[0]}: the Chrome Web Store requires manifest.json at the ROOT of the zip, not inside a folder. Zip the folder's contents, not the folder.`
+        : "";
+      throw new ManifestError(`No manifest.json at the root of ${inputPath}.${hint}`);
+    }
+    return analyze(extracted.dir, {
+      ...options,
+      inputPath,
+      package: {
+        kind: listing.kind,
+        archiveBytes: listing.fileSize,
+        files: listing.entries.map((e) => ({ relPath: e.relPath, size: e.size, compressedSize: e.compressedSize })),
+        unsafePaths: listing.unsafePaths,
+      },
+    });
+  } finally {
+    extracted.cleanup();
+  }
 }
 
 /** Pure-ish engine entry point: directory in → LintReport out. Only manifest
@@ -30,7 +72,7 @@ export function analyze(rootDir: string, options: AnalyzeOptions): LintReport {
   const { manifest, raw } = loadManifest(rootDir);
 
   const manifestRefs = collectManifestRefs(manifest);
-  const files = discoverFiles(rootDir, manifestRefs);
+  const files = discoverFiles(rootDir, manifestRefs, { archive: !!options.package });
   const htmlFiles = files.filter((f) => isHtml(f.relPath));
   const scriptFiles = files.filter((f) => isScript(f.relPath)).map(parseScript);
 
@@ -55,6 +97,7 @@ export function analyze(rootDir: string, options: AnalyzeOptions): LintReport {
     manifestRefs: manifestRefs.all,
     runtimeRequestedPermissions: extraction.runtimeRequestedPermissions,
     dnrRulesets: loadDnrRulesets(rootDir, manifest),
+    ...(options.package ? { package: options.package } : {}),
   };
 
   const ruleFindings = runRules(model);
@@ -83,13 +126,14 @@ export function analyze(rootDir: string, options: AnalyzeOptions): LintReport {
   return {
     tool: "tabsmith-lint",
     version: options.version,
-    inputPath: rootDir,
+    inputPath: options.inputPath ?? rootDir,
     manifestVersion: manifest.manifest_version,
     browsers: {
       chrome: {
         verdict,
         findings,
         stats: {
+          ...(options.package ? { packageFiles: options.package.files.length } : {}),
           filesScanned: files.length,
           scriptsParsed,
           parseErrors: scriptFiles.length - scriptsParsed,

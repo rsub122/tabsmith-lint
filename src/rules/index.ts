@@ -5,8 +5,9 @@ import { mv3Rules } from "./mv3.js";
 import { fileRules } from "./files.js";
 import { securityRules } from "./security.js";
 import { obfuscationRules } from "./obfuscation.js";
+import { packageRules } from "./package.js";
 
-export const allRules: Rule[] = [...permissionRules, ...mv3Rules, ...fileRules, ...securityRules, ...obfuscationRules];
+export const allRules: Rule[] = [...permissionRules, ...mv3Rules, ...fileRules, ...securityRules, ...obfuscationRules, ...packageRules];
 
 /** Run every rule and return all findings, ordered reject → fix → info. */
 export function runRules(model: ExtensionModel): Finding[] {
